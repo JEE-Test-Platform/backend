@@ -4,6 +4,7 @@ import { Role } from '@prisma/client';
 // Extend Express Request to include user data from JWT
 export interface AuthRequest extends Request {
   user?: {
+    id: string;
     userId: string;
     email: string;
     role: Role;
