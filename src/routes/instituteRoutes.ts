@@ -20,9 +20,11 @@ router.patch('/students/:studentId/toggle-status', instituteController.toggleStu
 
 // Master tests
 router.get('/master-tests', instituteController.getMasterTests);
+router.get('/master-tests/:testId', instituteController.getMasterTestById);
 
 // Test activations
 router.get('/test-activations', instituteController.getTestActivations);
+router.get('/test-activations/:activationId/details', instituteController.getActivationDetails);
 router.post('/test-activations', instituteController.activateTest);
 router.patch('/test-activations/:activationId/deactivate', instituteController.deactivateTest);
 router.patch('/test-activations/:activationId/extend', instituteController.extendDeadline);

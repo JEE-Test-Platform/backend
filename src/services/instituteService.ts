@@ -405,6 +405,62 @@ export const instituteService = {
     }));
   },
 
+  // Get single master test with full details
+  getMasterTestById: async (testId: string) => {
+    const test = await prisma.masterTest.findUnique({
+      where: { id: testId },
+      include: {
+        createdBy: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+        questions: {
+          include: {
+            options: {
+              orderBy: { optionLabel: 'asc' },
+            },
+          },
+          orderBy: { questionOrder: 'asc' },
+        },
+      },
+    });
+
+    if (!test) {
+      throw new Error('Test not found');
+    }
+
+    return {
+      id: test.id,
+      title: test.title,
+      description: test.description,
+      testType: test.testType,
+      duration: test.duration,
+      totalMarks: test.totalMarks,
+      passingMarks: test.passingMarks,
+      instructions: test.instructions || '',
+      isActive: test.isActive,
+      createdAt: test.createdAt.toISOString(),
+      operatorName: `${test.createdBy.firstName} ${test.createdBy.lastName}`,
+      questions: test.questions.map(q => ({
+        id: q.id,
+        questionText: q.questionText,
+        questionType: q.questionType,
+        subject: q.subject,
+        difficulty: q.difficulty,
+        marks: q.marks,
+        negativeMarks: 0, // Default to 0 as schema doesn't have this field
+        orderIndex: q.questionOrder,
+        options: q.options.map(o => ({
+          id: o.id,
+          optionText: o.optionText,
+          optionLabel: o.optionLabel,
+        })),
+      })),
+    };
+  },
+
   // Activate a test
   activateTest: async (userId: string, activationData: any) => {
     const institute = await prisma.institute.findUnique({
@@ -429,14 +485,34 @@ export const instituteService = {
       throw new Error('Test already activated for this institute');
     }
 
+    // Parse dates and times
+    const activationDate = new Date(activationData.activationDate);
+    const expiryDate = new Date(activationData.expiryDate);
+
+    // Combine date with time if provided (time is in HH:MM format)
+    let startTime = null;
+    let endTime = null;
+
+    if (activationData.startTime) {
+      const [hours, minutes] = activationData.startTime.split(':');
+      startTime = new Date(activationData.activationDate);
+      startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    }
+
+    if (activationData.endTime) {
+      const [hours, minutes] = activationData.endTime.split(':');
+      endTime = new Date(activationData.expiryDate);
+      endTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    }
+
     const activation = await prisma.instituteTestActivation.create({
       data: {
         instituteId: institute.id,
         masterTestId: activationData.masterTestId,
-        activationDate: new Date(activationData.activationDate),
-        expiryDate: new Date(activationData.expiryDate),
-        startTime: activationData.startTime ? new Date(activationData.startTime) : null,
-        endTime: activationData.endTime ? new Date(activationData.endTime) : null,
+        activationDate,
+        expiryDate,
+        startTime,
+        endTime,
         maxAttempts: activationData.maxAttempts || 1,
         isActive: true,
       },
@@ -504,6 +580,110 @@ export const instituteService = {
         averageScore: avgScore,
       };
     });
+  },
+
+  // Get detailed activation information
+  getActivationDetails: async (userId: string, activationId: string) => {
+    const institute = await prisma.institute.findUnique({
+      where: { userId },
+    });
+
+    if (!institute) {
+      throw new Error('Institute not found');
+    }
+
+    const activation = await prisma.instituteTestActivation.findUnique({
+      where: { id: activationId },
+      include: {
+        masterTest: {
+          select: {
+            title: true,
+            testType: true,
+            totalMarks: true,
+            passingMarks: true,
+            duration: true,
+          },
+        },
+        attempts: {
+          where: { status: 'SUBMITTED' },
+          include: {
+            student: {
+              include: {
+                user: {
+                  select: {
+                    email: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { rank: 'asc' },
+        },
+      },
+    });
+
+    if (!activation || activation.instituteId !== institute.id) {
+      throw new Error('Activation not found');
+    }
+
+    const totalStudents = await prisma.student.count({
+      where: { instituteId: institute.id },
+    });
+
+    // Calculate statistics
+    const uniqueStudents = new Set(activation.attempts.map(a => a.studentId)).size;
+    const percentages = activation.attempts.map(a => a.percentage || 0);
+
+    const avgScore = percentages.length > 0
+      ? percentages.reduce((sum, p) => sum + p, 0) / percentages.length
+      : 0;
+
+    const highestScore = percentages.length > 0
+      ? Math.max(...percentages)
+      : 0;
+
+    const lowestScore = percentages.length > 0
+      ? Math.min(...percentages)
+      : 0;
+
+    const passedCount = activation.attempts.filter(a =>
+      (a.obtainedMarks || 0) >= activation.masterTest.passingMarks
+    ).length;
+
+    const passPercentage = percentages.length > 0
+      ? (passedCount / percentages.length) * 100
+      : 0;
+
+    return {
+      id: activation.id,
+      masterTestTitle: activation.masterTest.title,
+      testType: activation.masterTest.testType,
+      totalMarks: activation.masterTest.totalMarks,
+      passingMarks: activation.masterTest.passingMarks,
+      duration: activation.masterTest.duration,
+      activationDate: activation.activationDate.toISOString(),
+      expiryDate: activation.expiryDate.toISOString(),
+      startTime: activation.startTime?.toISOString() || null,
+      endTime: activation.endTime?.toISOString() || null,
+      maxAttempts: activation.maxAttempts,
+      isActive: activation.isActive,
+      studentsAssigned: totalStudents,
+      studentsAttempted: uniqueStudents,
+      averageScore: avgScore,
+      highestScore: highestScore,
+      lowestScore: lowestScore,
+      passPercentage: passPercentage,
+      attempts: activation.attempts.map(attempt => ({
+        id: attempt.id,
+        studentName: `${attempt.student.firstName} ${attempt.student.lastName}`,
+        studentEmail: attempt.student.user.email,
+        obtainedMarks: attempt.obtainedMarks || 0,
+        percentage: attempt.percentage || 0,
+        rank: attempt.rank || 0,
+        submittedAt: attempt.submittedAt?.toISOString() || '',
+        timeTaken: (attempt.timeSpent || 0) * 60, // Convert minutes to seconds for consistency
+      })),
+    };
   },
 
   // Deactivate test

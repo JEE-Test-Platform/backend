@@ -82,6 +82,20 @@ export const instituteController = {
     }
   },
 
+  // Get single master test with full details
+  getMasterTestById: async (req: AuthRequest, res: Response) => {
+    try {
+      const { testId } = req.params;
+      console.log('Fetching test with ID:', testId);
+      const test = await instituteService.getMasterTestById(testId);
+      console.log('Test found:', test ? 'Yes' : 'No');
+      res.json({ success: true, data: { test } });
+    } catch (error: any) {
+      console.error('Error fetching master test:', error);
+      res.status(404).json({ success: false, message: error.message || 'Failed to fetch master test' });
+    }
+  },
+
   // Activate a test for the institute
   activateTest: async (req: AuthRequest, res: Response) => {
     try {
@@ -104,6 +118,19 @@ export const instituteController = {
     } catch (error: any) {
       console.error('Error fetching test activations:', error);
       res.status(500).json({ success: false, message: error.message || 'Failed to fetch test activations' });
+    }
+  },
+
+  // Get detailed information about a specific activation
+  getActivationDetails: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { activationId } = req.params;
+      const activation = await instituteService.getActivationDetails(userId, activationId);
+      res.json({ success: true, data: { activation } });
+    } catch (error: any) {
+      console.error('Error fetching activation details:', error);
+      res.status(404).json({ success: false, message: error.message || 'Failed to fetch activation details' });
     }
   },
 
