@@ -759,4 +759,53 @@ export const instituteService = {
       passPercentage: 0,
     };
   },
+
+  // Get top performers for the institute
+  getTopPerformers: async (userId: string, limit: number = 10) => {
+    const institute = await prisma.institute.findUnique({
+      where: { userId },
+    });
+
+    if (!institute) {
+      throw new Error('Institute not found');
+    }
+
+    // Import leaderboard service
+    const { leaderboardService } = require('./leaderboardService');
+    
+    return await leaderboardService.getInstituteTopPerformers(institute.id, limit);
+  },
+
+  // Get leaderboard overview
+  getLeaderboardOverview: async (userId: string) => {
+    const institute = await prisma.institute.findUnique({
+      where: { userId },
+    });
+
+    if (!institute) {
+      throw new Error('Institute not found');
+    }
+
+    // Import leaderboard service
+    const { leaderboardService } = require('./leaderboardService');
+    
+    return await leaderboardService.getInstituteLeaderboardOverview(institute.id);
+  },
+
+  // Get test-specific leaderboard
+  getTestLeaderboard: async (userId: string, testActivationId: string) => {
+    const institute = await prisma.institute.findUnique({
+      where: { userId },
+    });
+
+    if (!institute) {
+      throw new Error('Institute not found');
+    }
+
+    // Import leaderboard service
+    const { leaderboardService } = require('./leaderboardService');
+    
+    return await leaderboardService.getTestLeaderboard(testActivationId, institute.id);
+  },
 };
+

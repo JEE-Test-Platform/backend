@@ -900,4 +900,65 @@ export const studentService = {
 
     return subjectStats;
   },
+
+  // Get student's rank for a specific test
+  getTestRank: async (userId: string, testActivationId: string) => {
+    const student = await prisma.student.findUnique({
+      where: { userId },
+    });
+
+    if (!student) {
+      throw new Error('Student not found');
+    }
+
+    // Import leaderboard service
+    const { leaderboardService } = require('./leaderboardService');
+    
+    return await leaderboardService.getStudentRank(student.id, testActivationId);
+  },
+
+  // Get all tests with student's rank
+  getTestsWithRanks: async (userId: string) => {
+    const student = await prisma.student.findUnique({
+      where: { userId },
+    });
+
+    if (!student) {
+      throw new Error('Student not found');
+    }
+
+    const attempts = await prisma.testAttempt.findMany({
+      where: {
+        studentId: student.id,
+        status: 'SUBMITTED',
+      },
+      include: {
+        testActivation: {
+          include: {
+            masterTest: {
+              select: {
+                title: true,
+                testType: true,
+                totalMarks: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+
+    return attempts.map(attempt => ({
+      testActivationId: attempt.testActivationId,
+      attemptId: attempt.id,
+      testTitle: attempt.testActivation.masterTest.title,
+      testType: attempt.testActivation.masterTest.testType,
+      obtainedMarks: attempt.obtainedMarks,
+      totalMarks: attempt.totalMarks,
+      percentage: attempt.percentage,
+      rank: attempt.rank,
+      submittedAt: attempt.submittedAt,
+    }));
+  },
 };
+
