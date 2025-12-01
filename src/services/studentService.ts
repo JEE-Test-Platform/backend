@@ -625,8 +625,10 @@ export const studentService = {
         OR: [
           { obtainedMarks: { gt: obtainedMarks } },
           {
-            obtainedMarks,
-            timeSpent: { lt: timeSpent },
+            AND: [
+              { obtainedMarks: obtainedMarks },
+              { timeSpent: { lt: timeSpent } },
+            ],
           },
         ],
       },
