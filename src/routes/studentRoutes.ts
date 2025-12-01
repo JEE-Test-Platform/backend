@@ -36,11 +36,11 @@ router.post('/attempts/:attemptId/mark-review', studentController.markForReview)
 // Test Attempt - Submit test
 router.post('/attempts/:attemptId/submit', studentController.submitTest);
 
+// Results - Get all attempts history (must come before :attemptId route)
+router.get('/results/history', studentController.getAttemptsHistory);
+
 // Results - Get test result
 router.get('/results/:attemptId', studentController.getTestResult);
-
-// Results - Get all attempts history
-router.get('/results/history', studentController.getAttemptsHistory);
 
 // Analytics - Get performance analytics
 router.get('/analytics/performance', studentController.getPerformanceAnalytics);
