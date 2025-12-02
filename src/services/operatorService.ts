@@ -611,4 +611,107 @@ export const operatorService = {
       averageScore: avgScore,
     };
   },
+
+  // Create test with questions (from rich text editor)
+  createTestWithQuestions: async (userId: string, testData: any, questions: any[]) => {
+    const operator = await prisma.operator.findUnique({
+      where: { userId },
+    });
+
+    if (!operator) {
+      throw new Error('Operator not found');
+    }
+
+    // Create master test with questions in a transaction
+    const masterTest = await prisma.$transaction(async (tx) => {
+      // Create the master test
+      const test = await tx.masterTest.create({
+        data: {
+          title: testData.title,
+          description: testData.description,
+          testType: testData.testType as TestType,
+          duration: testData.duration,
+          totalMarks: testData.totalMarks,
+          passingMarks: testData.passingMarks,
+          instructions: testData.instructions,
+          createdById: operator.id,
+          isActive: true,
+        },
+      });
+
+      // Create all questions
+      const createdQuestions = await Promise.all(
+        questions.map(async (q, index) => {
+          const questionData: any = {
+            masterTestId: test.id,
+            questionText: q.questionText,
+            questionType: q.questionType as QuestionType,
+            subject: q.subject as Subject,
+            difficulty: q.difficulty as Difficulty,
+            correctAnswer: q.correctAnswer,
+            marks: q.marks,
+            questionOrder: q.orderIndex || index + 1,
+            explanation: q.explanation,
+            imageUrl: q.questionImageUrl,
+          };
+
+          // Create the question first
+          const createdQuestion = await tx.question.create({
+            data: questionData,
+          });
+
+          // Create MCQ options if question type is MCQ
+          if (q.questionType === 'MCQ') {
+            await Promise.all([
+              tx.option.create({
+                data: {
+                  questionId: createdQuestion.id,
+                  optionLabel: 'A',
+                  optionText: q.optionA || '',
+                  optionImageUrl: q.optionAImageUrl,
+                  isCorrect: q.correctAnswer === 'A',
+                },
+              }),
+              tx.option.create({
+                data: {
+                  questionId: createdQuestion.id,
+                  optionLabel: 'B',
+                  optionText: q.optionB || '',
+                  optionImageUrl: q.optionBImageUrl,
+                  isCorrect: q.correctAnswer === 'B',
+                },
+              }),
+              tx.option.create({
+                data: {
+                  questionId: createdQuestion.id,
+                  optionLabel: 'C',
+                  optionText: q.optionC || '',
+                  optionImageUrl: q.optionCImageUrl,
+                  isCorrect: q.correctAnswer === 'C',
+                },
+              }),
+              tx.option.create({
+                data: {
+                  questionId: createdQuestion.id,
+                  optionLabel: 'D',
+                  optionText: q.optionD || '',
+                  optionImageUrl: q.optionDImageUrl,
+                  isCorrect: q.correctAnswer === 'D',
+                },
+              }),
+            ]);
+          }
+
+          return createdQuestion;
+        })
+      );
+
+      return {
+        ...test,
+        questions: createdQuestions,
+      };
+    });
+
+    return masterTest;
+  },
 };

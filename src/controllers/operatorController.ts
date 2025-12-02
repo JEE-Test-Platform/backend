@@ -185,4 +185,33 @@ export const operatorController = {
       res.status(404).json({ success: false, message: error.message || 'Failed to fetch test statistics' });
     }
   },
+
+  // Create test with questions (rich text editor)
+  createTestWithQuestions: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { testData, questions } = req.body;
+
+      console.log('📝 Creating test with editor - Test data:', testData);
+      console.log('📊 Questions count:', questions?.length);
+
+      if (!testData || !questions || questions.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Missing required fields: testData and questions',
+        });
+      }
+
+      const masterTest = await operatorService.createTestWithQuestions(userId, testData, questions);
+
+      res.json({
+        success: true,
+        data: masterTest,
+        message: `Test created successfully with ${questions.length} questions`,
+      });
+    } catch (error: any) {
+      console.error('Error creating test with questions:', error);
+      res.status(400).json({ success: false, message: error.message || 'Failed to create test' });
+    }
+  },
 };

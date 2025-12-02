@@ -22,4 +22,7 @@ router.get('/master-tests/:testId/statistics', operatorController.getTestStatist
 router.post('/csv/validate', csvUpload, operatorController.validateCSV);
 router.post('/csv/upload', csvUpload, operatorController.createTestFromCSV);
 
+// Rich text editor routes
+router.post('/tests/create-with-questions', operatorController.createTestWithQuestions);
+
 export default router;
