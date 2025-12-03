@@ -177,4 +177,17 @@ export const studentController = {
       res.status(500).json({ success: false, error: 'Failed to fetch subject-wise performance' });
     }
   },
+
+  // Get detailed analytics for a specific test attempt
+  getDetailedAttemptAnalytics: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { attemptId } = req.params;
+      const analytics = await studentService.getDetailedAttemptAnalytics(userId, attemptId);
+      res.json({ success: true, data: analytics });
+    } catch (error: any) {
+      console.error('Error fetching detailed attempt analytics:', error);
+      res.status(400).json({ success: false, error: error.message || 'Failed to fetch detailed analytics' });
+    }
+  },
 };

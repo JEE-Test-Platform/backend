@@ -48,4 +48,7 @@ router.get('/analytics/performance', studentController.getPerformanceAnalytics);
 // Analytics - Get subject-wise performance
 router.get('/analytics/subject-wise', studentController.getSubjectWisePerformance);
 
+// Analytics - Get detailed analytics for a specific test attempt
+router.get('/analytics/attempt/:attemptId', studentController.getDetailedAttemptAnalytics);
+
 export default router;
