@@ -748,15 +748,284 @@ export const instituteService = {
       throw new Error('Institute not found');
     }
 
-    // TODO: Implement detailed analytics based on period
-    // For now, return mock data structure
+    // Calculate date range based on period
+    const now = new Date();
+    let startDate: Date;
+    
+    switch (period) {
+      case 'quarter':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        break;
+      case 'year':
+        startDate = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+        break;
+      case 'month':
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        break;
+    }
+
+    // Get all students for this institute
+    const totalStudents = await prisma.student.count({
+      where: { instituteId: institute.id },
+    });
+
+    // Get all test activations for this institute
+    const totalTestsActivated = await prisma.instituteTestActivation.count({
+      where: { 
+        instituteId: institute.id,
+        createdAt: { gte: startDate },
+      },
+    });
+
+    // Get all submitted attempts for this institute's students within period
+    const attempts = await prisma.testAttempt.findMany({
+      where: {
+        student: { instituteId: institute.id },
+        status: 'SUBMITTED',
+        submittedAt: { gte: startDate },
+      },
+      include: {
+        testActivation: {
+          include: {
+            masterTest: {
+              select: {
+                testType: true,
+                passingMarks: true,
+              },
+            },
+          },
+        },
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        answers: {
+          include: {
+            question: {
+              select: {
+                subject: true,
+                difficulty: true,
+                questionType: true,
+                marks: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const totalAttempts = attempts.length;
+
+    // Calculate average score and pass rate
+    const percentages = attempts.map(a => a.percentage || 0);
+    const averageScore = percentages.length > 0
+      ? percentages.reduce((sum, p) => sum + p, 0) / percentages.length
+      : 0;
+
+    const passedAttempts = attempts.filter(a => 
+      (a.obtainedMarks || 0) >= (a.testActivation.masterTest.passingMarks || 0)
+    ).length;
+    const passRate = totalAttempts > 0 ? (passedAttempts / totalAttempts) * 100 : 0;
+
+    // Subject-wise Performance
+    const subjectStats: Record<string, { totalQuestions: number; correctAnswers: number; totalMarks: number; obtainedMarks: number }> = {};
+    
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const subject = answer.question.subject;
+        if (!subjectStats[subject]) {
+          subjectStats[subject] = { totalQuestions: 0, correctAnswers: 0, totalMarks: 0, obtainedMarks: 0 };
+        }
+        subjectStats[subject].totalQuestions++;
+        subjectStats[subject].totalMarks += answer.question.marks;
+        subjectStats[subject].obtainedMarks += answer.marksObtained || 0;
+        if (answer.isCorrect) {
+          subjectStats[subject].correctAnswers++;
+        }
+      }
+    }
+
+    const subjectWisePerformance = Object.entries(subjectStats).map(([subject, stats]) => ({
+      subject,
+      totalAttempts: stats.totalQuestions,
+      averageScore: stats.totalMarks > 0 ? (stats.obtainedMarks / stats.totalMarks) * 100 : 0,
+      passRate: stats.totalQuestions > 0 ? (stats.correctAnswers / stats.totalQuestions) * 100 : 0,
+      accuracy: stats.totalQuestions > 0 ? (stats.correctAnswers / stats.totalQuestions) * 100 : 0,
+    }));
+
+    // Difficulty-wise Performance
+    const difficultyStats: Record<string, { totalQuestions: number; correctAnswers: number; totalMarks: number; obtainedMarks: number }> = {};
+    
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const difficulty = answer.question.difficulty;
+        if (!difficultyStats[difficulty]) {
+          difficultyStats[difficulty] = { totalQuestions: 0, correctAnswers: 0, totalMarks: 0, obtainedMarks: 0 };
+        }
+        difficultyStats[difficulty].totalQuestions++;
+        difficultyStats[difficulty].totalMarks += answer.question.marks;
+        difficultyStats[difficulty].obtainedMarks += answer.marksObtained || 0;
+        if (answer.isCorrect) {
+          difficultyStats[difficulty].correctAnswers++;
+        }
+      }
+    }
+
+    const difficultyWisePerformance = Object.entries(difficultyStats).map(([difficulty, stats]) => ({
+      difficulty,
+      totalQuestions: stats.totalQuestions,
+      correctAnswers: stats.correctAnswers,
+      averageScore: stats.totalMarks > 0 ? (stats.obtainedMarks / stats.totalMarks) * 100 : 0,
+      accuracy: stats.totalQuestions > 0 ? (stats.correctAnswers / stats.totalQuestions) * 100 : 0,
+    }));
+
+    // Question Type Performance
+    const questionTypeStats: Record<string, { totalQuestions: number; correctAnswers: number; totalMarks: number; obtainedMarks: number }> = {};
+    
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const qType = answer.question.questionType;
+        if (!questionTypeStats[qType]) {
+          questionTypeStats[qType] = { totalQuestions: 0, correctAnswers: 0, totalMarks: 0, obtainedMarks: 0 };
+        }
+        questionTypeStats[qType].totalQuestions++;
+        questionTypeStats[qType].totalMarks += answer.question.marks;
+        questionTypeStats[qType].obtainedMarks += answer.marksObtained || 0;
+        if (answer.isCorrect) {
+          questionTypeStats[qType].correctAnswers++;
+        }
+      }
+    }
+
+    const questionTypePerformance = Object.entries(questionTypeStats).map(([questionType, stats]) => ({
+      questionType,
+      totalQuestions: stats.totalQuestions,
+      correctAnswers: stats.correctAnswers,
+      averageScore: stats.totalMarks > 0 ? (stats.obtainedMarks / stats.totalMarks) * 100 : 0,
+      accuracy: stats.totalQuestions > 0 ? (stats.correctAnswers / stats.totalQuestions) * 100 : 0,
+    }));
+
+    // Test Type Performance
+    const testTypeStats: Record<string, { activations: Set<string>; attempts: number; totalPercentage: number }> = {};
+    
+    for (const attempt of attempts) {
+      const testType = attempt.testActivation.masterTest.testType;
+      if (!testTypeStats[testType]) {
+        testTypeStats[testType] = { activations: new Set(), attempts: 0, totalPercentage: 0 };
+      }
+      testTypeStats[testType].activations.add(attempt.testActivation.id);
+      testTypeStats[testType].attempts++;
+      testTypeStats[testType].totalPercentage += attempt.percentage || 0;
+    }
+
+    const testTypePerformance = Object.entries(testTypeStats).map(([testType, stats]) => ({
+      testType,
+      totalActivations: stats.activations.size,
+      totalAttempts: stats.attempts,
+      averageScore: stats.attempts > 0 ? stats.totalPercentage / stats.attempts : 0,
+    }));
+
+    // Top Performers
+    const studentPerformance: Record<string, { name: string; totalPercentage: number; testsAttempted: number }> = {};
+    
+    for (const attempt of attempts) {
+      const studentId = attempt.student.id;
+      const studentName = `${attempt.student.firstName} ${attempt.student.lastName}`;
+      if (!studentPerformance[studentId]) {
+        studentPerformance[studentId] = { name: studentName, totalPercentage: 0, testsAttempted: 0 };
+      }
+      studentPerformance[studentId].totalPercentage += attempt.percentage || 0;
+      studentPerformance[studentId].testsAttempted++;
+    }
+
+    const topPerformers = Object.entries(studentPerformance)
+      .map(([studentId, stats]) => ({
+        studentId,
+        studentName: stats.name,
+        testsAttempted: stats.testsAttempted,
+        averageScore: stats.testsAttempted > 0 ? stats.totalPercentage / stats.testsAttempted : 0,
+      }))
+      .sort((a, b) => b.averageScore - a.averageScore)
+      .slice(0, 10);
+
+    // Recent Trends (monthly breakdown)
+    const trendData: Record<string, { totalPercentage: number; count: number }> = {};
+    
+    for (const attempt of attempts) {
+      const monthYear = attempt.submittedAt 
+        ? `${attempt.submittedAt.getFullYear()}-${String(attempt.submittedAt.getMonth() + 1).padStart(2, '0')}`
+        : '';
+      if (monthYear) {
+        if (!trendData[monthYear]) {
+          trendData[monthYear] = { totalPercentage: 0, count: 0 };
+        }
+        trendData[monthYear].totalPercentage += attempt.percentage || 0;
+        trendData[monthYear].count++;
+      }
+    }
+
+    const recentTrends = Object.entries(trendData)
+      .map(([month, stats]) => ({
+        month,
+        averageScore: stats.count > 0 ? stats.totalPercentage / stats.count : 0,
+        totalAttempts: stats.count,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    // Completion Rate Analysis
+    const allAttempts = await prisma.testAttempt.findMany({
+      where: {
+        student: { instituteId: institute.id },
+        startedAt: { gte: startDate },
+      },
+      select: {
+        status: true,
+      },
+    });
+
+    const completionStats = {
+      submitted: allAttempts.filter(a => a.status === 'SUBMITTED').length,
+      inProgress: allAttempts.filter(a => a.status === 'IN_PROGRESS').length,
+      expired: allAttempts.filter(a => a.status === 'EXPIRED').length,
+      completed: allAttempts.filter(a => a.status === 'COMPLETED').length,
+    };
+
+    // Time Analysis
+    const timeStats = attempts.filter(a => a.timeSpent !== null);
+    const avgTimeSpent = timeStats.length > 0
+      ? timeStats.reduce((sum, a) => sum + (a.timeSpent || 0), 0) / timeStats.length
+      : 0;
+
+    // Score Distribution (for histogram)
+    const scoreDistribution = [
+      { range: '0-20%', count: attempts.filter(a => (a.percentage || 0) >= 0 && (a.percentage || 0) < 20).length },
+      { range: '20-40%', count: attempts.filter(a => (a.percentage || 0) >= 20 && (a.percentage || 0) < 40).length },
+      { range: '40-60%', count: attempts.filter(a => (a.percentage || 0) >= 40 && (a.percentage || 0) < 60).length },
+      { range: '60-80%', count: attempts.filter(a => (a.percentage || 0) >= 60 && (a.percentage || 0) < 80).length },
+      { range: '80-100%', count: attempts.filter(a => (a.percentage || 0) >= 80 && (a.percentage || 0) <= 100).length },
+    ];
+
     return {
-      period,
-      totalStudents: 0,
-      totalTests: 0,
-      totalAttempts: 0,
-      averageScore: 0,
-      passPercentage: 0,
+      overview: {
+        totalStudents,
+        totalTestsActivated,
+        totalAttempts,
+        averageScore,
+        passRate,
+        avgTimeSpent,
+      },
+      subjectWisePerformance,
+      difficultyWisePerformance,
+      questionTypePerformance,
+      testTypePerformance,
+      topPerformers,
+      recentTrends,
+      completionStats,
+      scoreDistribution,
     };
   },
 
@@ -806,6 +1075,398 @@ export const instituteService = {
     const { leaderboardService } = require('./leaderboardService');
     
     return await leaderboardService.getTestLeaderboard(testActivationId, institute.id);
+  },
+
+  // Get detailed analytics for a specific student
+  getStudentAnalytics: async (userId: string, studentId: string) => {
+    const institute = await prisma.institute.findUnique({
+      where: { userId },
+    });
+
+    if (!institute) {
+      throw new Error('Institute not found');
+    }
+
+    // Verify student belongs to this institute
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        user: {
+          select: {
+            email: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!student || student.instituteId !== institute.id) {
+      throw new Error('Student not found or does not belong to this institute');
+    }
+
+    // Get all attempts for this student
+    const attempts = await prisma.testAttempt.findMany({
+      where: {
+        studentId: studentId,
+        status: 'SUBMITTED',
+      },
+      include: {
+        testActivation: {
+          include: {
+            masterTest: {
+              select: {
+                title: true,
+                testType: true,
+                totalMarks: true,
+                passingMarks: true,
+              },
+            },
+          },
+        },
+        answers: {
+          include: {
+            question: {
+              select: {
+                subject: true,
+                difficulty: true,
+                questionType: true,
+                marks: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+
+    // Basic stats
+    const totalTests = attempts.length;
+    const percentages = attempts.map(a => a.percentage || 0);
+    const averageScore = percentages.length > 0
+      ? percentages.reduce((sum, p) => sum + p, 0) / percentages.length
+      : 0;
+    const highestScore = percentages.length > 0 ? Math.max(...percentages) : 0;
+    const lowestScore = percentages.length > 0 ? Math.min(...percentages) : 0;
+
+    const passedTests = attempts.filter(a => 
+      (a.obtainedMarks || 0) >= (a.testActivation.masterTest.passingMarks || 0)
+    ).length;
+    const passRate = totalTests > 0 ? (passedTests / totalTests) * 100 : 0;
+
+    // Subject-wise breakdown
+    const subjectStats: Record<string, { total: number; correct: number; totalMarks: number; obtained: number }> = {};
+    
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const subject = answer.question.subject;
+        if (!subjectStats[subject]) {
+          subjectStats[subject] = { total: 0, correct: 0, totalMarks: 0, obtained: 0 };
+        }
+        subjectStats[subject].total++;
+        subjectStats[subject].totalMarks += answer.question.marks;
+        subjectStats[subject].obtained += answer.marksObtained || 0;
+        if (answer.isCorrect) {
+          subjectStats[subject].correct++;
+        }
+      }
+    }
+
+    const subjectWisePerformance = Object.entries(subjectStats).map(([subject, stats]) => ({
+      subject,
+      totalQuestions: stats.total,
+      correctAnswers: stats.correct,
+      accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
+      averageScore: stats.totalMarks > 0 ? (stats.obtained / stats.totalMarks) * 100 : 0,
+    }));
+
+    // Difficulty breakdown
+    const difficultyStats: Record<string, { total: number; correct: number }> = {};
+    
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const difficulty = answer.question.difficulty;
+        if (!difficultyStats[difficulty]) {
+          difficultyStats[difficulty] = { total: 0, correct: 0 };
+        }
+        difficultyStats[difficulty].total++;
+        if (answer.isCorrect) {
+          difficultyStats[difficulty].correct++;
+        }
+      }
+    }
+
+    const difficultyWisePerformance = Object.entries(difficultyStats).map(([difficulty, stats]) => ({
+      difficulty,
+      totalQuestions: stats.total,
+      correctAnswers: stats.correct,
+      accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
+    }));
+
+    // Test history
+    const testHistory = attempts.map(attempt => ({
+      id: attempt.id,
+      testTitle: attempt.testActivation.masterTest.title,
+      testType: attempt.testActivation.masterTest.testType,
+      totalMarks: attempt.testActivation.masterTest.totalMarks,
+      obtainedMarks: attempt.obtainedMarks || 0,
+      percentage: attempt.percentage || 0,
+      isPassed: (attempt.obtainedMarks || 0) >= (attempt.testActivation.masterTest.passingMarks || 0),
+      rank: attempt.rank,
+      timeSpent: attempt.timeSpent,
+      submittedAt: attempt.submittedAt?.toISOString() || '',
+    }));
+
+    // Progress over time (last 6 tests)
+    const progressTrend = attempts.slice(0, 6).reverse().map(attempt => ({
+      testTitle: attempt.testActivation.masterTest.title,
+      percentage: attempt.percentage || 0,
+      submittedAt: attempt.submittedAt?.toISOString() || '',
+    }));
+
+    // Strengths and weaknesses
+    const subjectsByScore = subjectWisePerformance.sort((a, b) => b.accuracy - a.accuracy);
+    const strengths = subjectsByScore.slice(0, 2).map(s => s.subject);
+    const weaknesses = subjectsByScore.slice(-2).reverse().map(s => s.subject);
+
+    return {
+      student: {
+        id: student.id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        email: student.user.email,
+        isActive: student.user.isActive,
+      },
+      overview: {
+        totalTests,
+        averageScore,
+        highestScore,
+        lowestScore,
+        passRate,
+        passedTests,
+        totalTimeSpent: attempts.reduce((sum, a) => sum + (a.timeSpent || 0), 0),
+      },
+      subjectWisePerformance,
+      difficultyWisePerformance,
+      testHistory,
+      progressTrend,
+      insights: {
+        strengths,
+        weaknesses,
+        recommendation: averageScore < 50 
+          ? 'Focus on fundamentals and practice more questions'
+          : averageScore < 70 
+          ? 'Good progress! Target weak areas for improvement'
+          : 'Excellent performance! Maintain consistency',
+      },
+    };
+  },
+
+  // Get test-wise analytics for an activation
+  getTestAnalytics: async (userId: string, activationId: string) => {
+    const institute = await prisma.institute.findUnique({
+      where: { userId },
+    });
+
+    if (!institute) {
+      throw new Error('Institute not found');
+    }
+
+    const activation = await prisma.instituteTestActivation.findUnique({
+      where: { id: activationId },
+      include: {
+        masterTest: {
+          include: {
+            questions: {
+              select: {
+                id: true,
+                subject: true,
+                difficulty: true,
+                questionType: true,
+                marks: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!activation || activation.instituteId !== institute.id) {
+      throw new Error('Test activation not found');
+    }
+
+    // Get all submitted attempts for this test
+    const attempts = await prisma.testAttempt.findMany({
+      where: {
+        testActivationId: activationId,
+        status: 'SUBMITTED',
+      },
+      include: {
+        student: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+        answers: {
+          include: {
+            question: {
+              select: {
+                id: true,
+                subject: true,
+                difficulty: true,
+                questionType: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { percentage: 'desc' },
+    });
+
+    // Basic stats
+    const totalAttempts = attempts.length;
+    const totalStudents = await prisma.student.count({
+      where: { instituteId: institute.id },
+    });
+    const participationRate = totalStudents > 0 ? (totalAttempts / totalStudents) * 100 : 0;
+
+    const percentages = attempts.map(a => a.percentage || 0);
+    const averageScore = percentages.length > 0
+      ? percentages.reduce((sum, p) => sum + p, 0) / percentages.length
+      : 0;
+    const highestScore = percentages.length > 0 ? Math.max(...percentages) : 0;
+    const lowestScore = percentages.length > 0 ? Math.min(...percentages) : 0;
+
+    const passedAttempts = attempts.filter(a => 
+      (a.obtainedMarks || 0) >= (activation.masterTest.passingMarks || 0)
+    ).length;
+    const passRate = totalAttempts > 0 ? (passedAttempts / totalAttempts) * 100 : 0;
+
+    // Question-wise analysis
+    const questionStats: Record<string, { total: number; correct: number; avgTime: number; timeCount: number }> = {};
+    
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const qId = answer.question.id;
+        if (!questionStats[qId]) {
+          questionStats[qId] = { total: 0, correct: 0, avgTime: 0, timeCount: 0 };
+        }
+        questionStats[qId].total++;
+        if (answer.isCorrect) {
+          questionStats[qId].correct++;
+        }
+        if (answer.timeSpent) {
+          questionStats[qId].avgTime += answer.timeSpent;
+          questionStats[qId].timeCount++;
+        }
+      }
+    }
+
+    // Subject breakdown
+    const subjectStats: Record<string, { total: number; correct: number }> = {};
+    
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const subject = answer.question.subject;
+        if (!subjectStats[subject]) {
+          subjectStats[subject] = { total: 0, correct: 0 };
+        }
+        subjectStats[subject].total++;
+        if (answer.isCorrect) {
+          subjectStats[subject].correct++;
+        }
+      }
+    }
+
+    const subjectPerformance = Object.entries(subjectStats).map(([subject, stats]) => ({
+      subject,
+      totalAttempts: stats.total,
+      correctAnswers: stats.correct,
+      accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
+    }));
+
+    // Difficulty breakdown
+    const difficultyStats: Record<string, { total: number; correct: number }> = {};
+    
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const difficulty = answer.question.difficulty;
+        if (!difficultyStats[difficulty]) {
+          difficultyStats[difficulty] = { total: 0, correct: 0 };
+        }
+        difficultyStats[difficulty].total++;
+        if (answer.isCorrect) {
+          difficultyStats[difficulty].correct++;
+        }
+      }
+    }
+
+    const difficultyPerformance = Object.entries(difficultyStats).map(([difficulty, stats]) => ({
+      difficulty,
+      totalAttempts: stats.total,
+      correctAnswers: stats.correct,
+      accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
+    }));
+
+    // Score distribution
+    const scoreDistribution = [
+      { range: '0-20%', count: attempts.filter(a => (a.percentage || 0) >= 0 && (a.percentage || 0) < 20).length },
+      { range: '20-40%', count: attempts.filter(a => (a.percentage || 0) >= 20 && (a.percentage || 0) < 40).length },
+      { range: '40-60%', count: attempts.filter(a => (a.percentage || 0) >= 40 && (a.percentage || 0) < 60).length },
+      { range: '60-80%', count: attempts.filter(a => (a.percentage || 0) >= 60 && (a.percentage || 0) < 80).length },
+      { range: '80-100%', count: attempts.filter(a => (a.percentage || 0) >= 80 && (a.percentage || 0) <= 100).length },
+    ];
+
+    // Top performers
+    const topPerformers = attempts.slice(0, 5).map(attempt => ({
+      studentName: `${attempt.student.firstName} ${attempt.student.lastName}`,
+      obtainedMarks: attempt.obtainedMarks || 0,
+      percentage: attempt.percentage || 0,
+      rank: attempt.rank,
+    }));
+
+    // Hardest questions (lowest accuracy)
+    const questionAnalysis = activation.masterTest.questions.map(q => {
+      const stats = questionStats[q.id] || { total: 0, correct: 0, avgTime: 0, timeCount: 0 };
+      return {
+        questionId: q.id,
+        subject: q.subject,
+        difficulty: q.difficulty,
+        questionType: q.questionType,
+        marks: q.marks,
+        totalAttempts: stats.total,
+        correctAttempts: stats.correct,
+        accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
+        avgTimeSpent: stats.timeCount > 0 ? stats.avgTime / stats.timeCount : 0,
+      };
+    }).sort((a, b) => a.accuracy - b.accuracy);
+
+    return {
+      test: {
+        title: activation.masterTest.title,
+        testType: activation.masterTest.testType,
+        totalMarks: activation.masterTest.totalMarks,
+        passingMarks: activation.masterTest.passingMarks,
+        totalQuestions: activation.masterTest.questions.length,
+        activationDate: activation.activationDate.toISOString(),
+        expiryDate: activation.expiryDate.toISOString(),
+      },
+      overview: {
+        totalStudents,
+        totalAttempts,
+        participationRate,
+        averageScore,
+        highestScore,
+        lowestScore,
+        passRate,
+        passedCount: passedAttempts,
+      },
+      subjectPerformance,
+      difficultyPerformance,
+      scoreDistribution,
+      topPerformers,
+      questionAnalysis: questionAnalysis.slice(0, 10), // Top 10 hardest questions
+    };
   },
 };
 

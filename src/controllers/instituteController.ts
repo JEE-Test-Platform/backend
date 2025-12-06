@@ -173,4 +173,30 @@ export const instituteController = {
       res.status(500).json({ success: false, message: error.message || 'Failed to fetch analytics' });
     }
   },
+
+  // Get student-specific analytics
+  getStudentAnalytics: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { studentId } = req.params;
+      const analytics = await instituteService.getStudentAnalytics(userId, studentId);
+      res.json({ success: true, data: analytics });
+    } catch (error: any) {
+      console.error('Error fetching student analytics:', error);
+      res.status(500).json({ success: false, message: error.message || 'Failed to fetch student analytics' });
+    }
+  },
+
+  // Get test-specific analytics
+  getTestAnalytics: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { activationId } = req.params;
+      const analytics = await instituteService.getTestAnalytics(userId, activationId);
+      res.json({ success: true, data: analytics });
+    } catch (error: any) {
+      console.error('Error fetching test analytics:', error);
+      res.status(500).json({ success: false, message: error.message || 'Failed to fetch test analytics' });
+    }
+  },
 };

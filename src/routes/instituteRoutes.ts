@@ -31,5 +31,7 @@ router.patch('/test-activations/:activationId/extend', instituteController.exten
 
 // Analytics
 router.get('/analytics', instituteController.getAnalytics);
+router.get('/analytics/student/:studentId', instituteController.getStudentAnalytics);
+router.get('/analytics/test/:activationId', instituteController.getTestAnalytics);
 
 export default router;
