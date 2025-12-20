@@ -118,6 +118,15 @@ public
 uploads/
 files/
 
+# Azurite (Local blob storage)
+azurite-data/
+__blobstorage__/
+__queuestorage__/
+__tablestorage__/
+__azurite_db_blob__.json
+__azurite_db_queue__.json
+__azurite_db_table__.json
+
 # IDE
 .vscode/
 .idea/

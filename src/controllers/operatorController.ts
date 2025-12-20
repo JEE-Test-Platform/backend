@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { operatorService } from '../services/operatorService';
 import { AuthRequest } from '../types';
 import multer from 'multer';
+import blobStorageService from '../services/blobStorageService';
 
 // Configure multer for CSV file uploads (memory storage)
 const storage = multer.memoryStorage();
@@ -212,6 +213,43 @@ export const operatorController = {
     } catch (error: any) {
       console.error('Error creating test with questions:', error);
       res.status(400).json({ success: false, message: error.message || 'Failed to create test' });
+    }
+  },
+
+  // Upload image to blob storage
+  uploadImage: async (req: Request, res: Response) => {
+    try {
+      // Check if file was uploaded
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error: 'No image file provided',
+        });
+      }
+
+      console.log('📤 Uploading image:', req.file.originalname, `(${req.file.size} bytes)`);
+
+      // Upload to blob storage
+      const imageUrl = await blobStorageService.uploadImage(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype
+      );
+
+      console.log('✅ Image uploaded successfully:', imageUrl);
+
+      res.status(200).json({
+        success: true,
+        imageUrl,
+        message: 'Image uploaded successfully',
+      });
+    } catch (error: any) {
+      console.error('❌ Image upload error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to upload image',
+        message: error.message,
+      });
     }
   },
 };

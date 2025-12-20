@@ -6,6 +6,7 @@ import studentRoutes from './routes/studentRoutes';
 import instituteRoutes from './routes/instituteRoutes';
 import operatorRoutes from './routes/operatorRoutes';
 import leaderboardRoutes from './routes/leaderboardRoutes';
+import blobStorageService from './services/blobStorageService';
 
 dotenv.config();
 
@@ -59,6 +60,11 @@ app.use((req, res) => {
     message: `The route ${req.method} ${req.originalUrl} does not exist on this server`,
   });
 });
+
+// Initialize Azure Blob Storage container
+blobStorageService.initializeContainer()
+  .then(() => console.log('✅ Azure Blob Storage initialized'))
+  .catch((error) => console.error('❌ Blob Storage initialization failed:', error));
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
