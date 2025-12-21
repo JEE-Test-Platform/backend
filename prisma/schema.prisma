@@ -175,7 +175,7 @@ model Question {
   subject         Subject
   difficulty      Difficulty
   marks           Int
-  correctAnswer   String           // For numerical/true-false questions
+  correctAnswer   String?          // For numerical/true-false questions (null for MCQ)
   explanation     String?
   imageUrl        String?
   questionOrder   Int              // Order in test

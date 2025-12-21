@@ -470,6 +470,22 @@ export const studentService = {
       throw new Error('Test is not in progress');
     }
 
+    // Check if answer already exists to handle time accumulation
+    const existingAnswer = await prisma.studentAnswer.findUnique({
+      where: {
+        attemptId_questionId: {
+          attemptId,
+          questionId,
+        },
+      },
+    });
+
+    // The frontend now sends cumulative time, so we just use it directly
+    // But if for some reason we get a smaller value, we keep the larger one
+    const finalTimeSpent = timeSpent !== undefined 
+      ? Math.max(timeSpent, existingAnswer?.timeSpent || 0)
+      : existingAnswer?.timeSpent;
+
     // Upsert answer
     const answer = await prisma.studentAnswer.upsert({
       where: {
@@ -480,14 +496,14 @@ export const studentService = {
       },
       update: {
         selectedAnswer,
-        timeSpent,
+        timeSpent: finalTimeSpent,
         updatedAt: new Date(),
       },
       create: {
         attemptId,
         questionId,
         selectedAnswer,
-        timeSpent,
+        timeSpent: timeSpent || 0,
       },
     });
 
@@ -625,8 +641,10 @@ export const studentService = {
         OR: [
           { obtainedMarks: { gt: obtainedMarks } },
           {
-            obtainedMarks,
-            timeSpent: { lt: timeSpent },
+            AND: [
+              { obtainedMarks: obtainedMarks },
+              { timeSpent: { lt: timeSpent } },
+            ],
           },
         ],
       },
@@ -815,6 +833,7 @@ export const studentService = {
       percentage: attempt.percentage,
       obtainedMarks: attempt.obtainedMarks,
       totalMarks: attempt.totalMarks,
+      attemptId: attempt.id,
     }));
 
     // Calculate averages
@@ -900,4 +919,259 @@ export const studentService = {
 
     return subjectStats;
   },
+
+  // Get detailed analytics for a specific test attempt
+  getDetailedAttemptAnalytics: async (userId: string, attemptId: string) => {
+    const student = await prisma.student.findUnique({
+      where: { userId },
+    });
+
+    if (!student) {
+      throw new Error('Student not found');
+    }
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        testActivation: {
+          include: {
+            masterTest: {
+              include: {
+                questions: {
+                  include: {
+                    options: true,
+                  },
+                  orderBy: { questionOrder: 'asc' },
+                },
+              },
+            },
+          },
+        },
+        answers: {
+          include: {
+            question: true,
+          },
+        },
+      },
+    });
+
+    if (!attempt || attempt.studentId !== student.id) {
+      throw new Error('Test attempt not found');
+    }
+
+    // 1. MISTAKE AND CONCEPTUAL ANALYSIS
+    
+    // 1.1 Subject/Topic-wise Accuracy
+    const subjectWiseAccuracy: Record<string, { correct: number; total: number; percentage: number }> = {};
+    
+    // 1.2 Difficulty-Pacing Analysis
+    const difficultyPacing: Record<string, {
+      avgTimeCorrect: number;
+      avgTimeIncorrect: number;
+      totalCorrect: number;
+      totalIncorrect: number;
+      timeCorrect: number;
+      timeIncorrect: number;
+    }> = {
+      EASY: { avgTimeCorrect: 0, avgTimeIncorrect: 0, totalCorrect: 0, totalIncorrect: 0, timeCorrect: 0, timeIncorrect: 0 },
+      MEDIUM: { avgTimeCorrect: 0, avgTimeIncorrect: 0, totalCorrect: 0, totalIncorrect: 0, timeCorrect: 0, timeIncorrect: 0 },
+      HARD: { avgTimeCorrect: 0, avgTimeIncorrect: 0, totalCorrect: 0, totalIncorrect: 0, timeCorrect: 0, timeIncorrect: 0 },
+    };
+
+    // 2. TEMPERAMENT AND STRATEGY ANALYSIS
+    
+    // 2.1 Pacing Efficiency
+    let totalTimeCorrect = 0;
+    let totalTimeIncorrect = 0;
+    let countCorrect = 0;
+    let countIncorrect = 0;
+
+    // 2.2 Time Utilization by Subject
+    const timeBySubject: Record<string, number> = {};
+
+    // Process all answers
+    attempt.answers.forEach(answer => {
+      const question = answer.question;
+      const subject = question.subject;
+      const difficulty = question.difficulty;
+      const timeSpent = answer.timeSpent || 0;
+      const isCorrect = answer.isCorrect === true;
+
+      // Subject-wise accuracy
+      if (!subjectWiseAccuracy[subject]) {
+        subjectWiseAccuracy[subject] = { correct: 0, total: 0, percentage: 0 };
+      }
+      subjectWiseAccuracy[subject].total++;
+      if (isCorrect) {
+        subjectWiseAccuracy[subject].correct++;
+      }
+
+      // Difficulty pacing
+      if (difficultyPacing[difficulty]) {
+        if (isCorrect) {
+          difficultyPacing[difficulty].totalCorrect++;
+          difficultyPacing[difficulty].timeCorrect += timeSpent;
+        } else {
+          difficultyPacing[difficulty].totalIncorrect++;
+          difficultyPacing[difficulty].timeIncorrect += timeSpent;
+        }
+      }
+
+      // Pacing efficiency
+      if (isCorrect) {
+        totalTimeCorrect += timeSpent;
+        countCorrect++;
+      } else {
+        totalTimeIncorrect += timeSpent;
+        countIncorrect++;
+      }
+
+      // Time by subject
+      if (!timeBySubject[subject]) {
+        timeBySubject[subject] = 0;
+      }
+      timeBySubject[subject] += timeSpent;
+    });
+
+    // Calculate percentages for subject accuracy
+    Object.keys(subjectWiseAccuracy).forEach(subject => {
+      const data = subjectWiseAccuracy[subject];
+      data.percentage = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
+    });
+
+    // Calculate averages for difficulty pacing
+    Object.keys(difficultyPacing).forEach(difficulty => {
+      const data = difficultyPacing[difficulty];
+      data.avgTimeCorrect = data.totalCorrect > 0 ? Math.round(data.timeCorrect / data.totalCorrect) : 0;
+      data.avgTimeIncorrect = data.totalIncorrect > 0 ? Math.round(data.timeIncorrect / data.totalIncorrect) : 0;
+    });
+
+    // 3. PERFORMANCE OVERVIEW
+    const attemptSummary = {
+      totalMarks: attempt.totalMarks,
+      obtainedMarks: attempt.obtainedMarks,
+      percentage: attempt.percentage,
+      isPassed: attempt.isPassed,
+      rank: attempt.rank,
+      status: attempt.status,
+      startedAt: attempt.startedAt,
+      submittedAt: attempt.submittedAt,
+      timeSpent: attempt.timeSpent,
+      testTitle: attempt.testActivation.masterTest.title,
+      testType: attempt.testActivation.masterTest.testType,
+      passingMarks: attempt.testActivation.masterTest.passingMarks,
+    };
+
+    // Pacing efficiency
+    const pacingEfficiency = {
+      avgTimeCorrect: countCorrect > 0 ? Math.round(totalTimeCorrect / countCorrect) : 0,
+      avgTimeIncorrect: countIncorrect > 0 ? Math.round(totalTimeIncorrect / countIncorrect) : 0,
+      totalCorrect: countCorrect,
+      totalIncorrect: countIncorrect,
+    };
+
+    // Convert time by subject to minutes
+    const timeUtilization: Record<string, { seconds: number; minutes: number; percentage: number }> = {};
+    const totalTimeSpent = Object.values(timeBySubject).reduce((sum, time) => sum + time, 0);
+    Object.keys(timeBySubject).forEach(subject => {
+      timeUtilization[subject] = {
+        seconds: timeBySubject[subject],
+        minutes: Math.round(timeBySubject[subject] / 60 * 10) / 10,
+        percentage: totalTimeSpent > 0 ? Math.round((timeBySubject[subject] / totalTimeSpent) * 100) : 0,
+      };
+    });
+
+    // Question-level breakdown for drill-down
+    const questionBreakdown = attempt.testActivation.masterTest.questions.map(question => {
+      const answer = attempt.answers.find(a => a.questionId === question.id);
+      return {
+        id: question.id,
+        questionOrder: question.questionOrder,
+        subject: question.subject,
+        difficulty: question.difficulty,
+        marks: question.marks,
+        questionText: question.questionText,
+        correctAnswer: question.correctAnswer,
+        selectedAnswer: answer?.selectedAnswer || null,
+        isCorrect: answer?.isCorrect || false,
+        timeSpent: answer?.timeSpent || 0,
+        marksObtained: answer?.marksObtained || 0,
+        isAttempted: !!answer?.selectedAnswer,
+      };
+    });
+
+    return {
+      attemptSummary,
+      mistakeAnalysis: {
+        subjectWiseAccuracy,
+        difficultyPacing,
+      },
+      temperamentAnalysis: {
+        pacingEfficiency,
+        timeUtilization,
+      },
+      questionBreakdown,
+    };
+  },
+
+  // Get student's rank for a specific test
+  getTestRank: async (userId: string, testActivationId: string) => {
+    const student = await prisma.student.findUnique({
+      where: { userId },
+    });
+
+    if (!student) {
+      throw new Error('Student not found');
+    }
+
+    // Import leaderboard service
+    const { leaderboardService } = require('./leaderboardService');
+    
+    return await leaderboardService.getStudentRank(student.id, testActivationId);
+  },
+
+  // Get all tests with student's rank
+  getTestsWithRanks: async (userId: string) => {
+    const student = await prisma.student.findUnique({
+      where: { userId },
+    });
+
+    if (!student) {
+      throw new Error('Student not found');
+    }
+
+    const attempts = await prisma.testAttempt.findMany({
+      where: {
+        studentId: student.id,
+        status: 'SUBMITTED',
+      },
+      include: {
+        testActivation: {
+          include: {
+            masterTest: {
+              select: {
+                title: true,
+                testType: true,
+                totalMarks: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+
+    return attempts.map(attempt => ({
+      testActivationId: attempt.testActivationId,
+      attemptId: attempt.id,
+      testTitle: attempt.testActivation.masterTest.title,
+      testType: attempt.testActivation.masterTest.testType,
+      obtainedMarks: attempt.obtainedMarks,
+      totalMarks: attempt.totalMarks,
+      percentage: attempt.percentage,
+      rank: attempt.rank,
+      submittedAt: attempt.submittedAt,
+    }));
+  },
 };
+

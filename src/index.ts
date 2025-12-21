@@ -3,6 +3,10 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes';
 import studentRoutes from './routes/studentRoutes';
+import instituteRoutes from './routes/instituteRoutes';
+import operatorRoutes from './routes/operatorRoutes';
+import leaderboardRoutes from './routes/leaderboardRoutes';
+import blobStorageService from './services/blobStorageService';
 
 dotenv.config();
 
@@ -36,6 +40,9 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/student', studentRoutes);
+app.use('/api/institute', instituteRoutes);
+app.use('/api/operator', operatorRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -53,6 +60,11 @@ app.use((req, res) => {
     message: `The route ${req.method} ${req.originalUrl} does not exist on this server`,
   });
 });
+
+// Initialize Azure Blob Storage container
+blobStorageService.initializeContainer()
+  .then(() => console.log('✅ Azure Blob Storage initialized'))
+  .catch((error) => console.error('❌ Blob Storage initialization failed:', error));
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

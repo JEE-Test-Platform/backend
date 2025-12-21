@@ -6,7 +6,7 @@ export const studentController = {
   // Get student dashboard overview
   getDashboard: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const dashboard = await studentService.getDashboard(userId);
       res.json({ success: true, data: dashboard });
     } catch (error) {
@@ -18,7 +18,7 @@ export const studentController = {
   // Get available tests
   getAvailableTests: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const tests = await studentService.getAvailableTests(userId);
       res.json({ success: true, data: tests });
     } catch (error) {
@@ -30,7 +30,7 @@ export const studentController = {
   // Get upcoming tests
   getUpcomingTests: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const tests = await studentService.getUpcomingTests(userId);
       res.json({ success: true, data: tests });
     } catch (error) {
@@ -42,7 +42,7 @@ export const studentController = {
   // Get completed tests
   getCompletedTests: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const tests = await studentService.getCompletedTests(userId);
       res.json({ success: true, data: tests });
     } catch (error) {
@@ -54,7 +54,7 @@ export const studentController = {
   // Start a new test attempt
   startTest: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const { testActivationId } = req.params;
       const attempt = await studentService.startTest(userId, testActivationId);
       res.json({ success: true, data: attempt });
@@ -67,7 +67,7 @@ export const studentController = {
   // Get current test attempt
   getTestAttempt: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const { attemptId } = req.params;
       const attempt = await studentService.getTestAttempt(userId, attemptId);
       res.json({ success: true, data: attempt });
@@ -80,7 +80,7 @@ export const studentController = {
   // Save answer
   saveAnswer: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const { attemptId } = req.params;
       const { questionId, selectedAnswer, timeSpent } = req.body;
 
@@ -102,7 +102,7 @@ export const studentController = {
   // Mark question for review
   markForReview: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const { attemptId } = req.params;
       const { questionId } = req.body;
 
@@ -117,7 +117,7 @@ export const studentController = {
   // Submit test
   submitTest: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const { attemptId } = req.params;
 
       const result = await studentService.submitTest(userId, attemptId);
@@ -131,7 +131,7 @@ export const studentController = {
   // Get test result
   getTestResult: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const { attemptId } = req.params;
 
       const result = await studentService.getTestResult(userId, attemptId);
@@ -145,7 +145,7 @@ export const studentController = {
   // Get attempts history
   getAttemptsHistory: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const history = await studentService.getAttemptsHistory(userId);
       res.json({ success: true, data: history });
     } catch (error) {
@@ -157,7 +157,7 @@ export const studentController = {
   // Get performance analytics
   getPerformanceAnalytics: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const analytics = await studentService.getPerformanceAnalytics(userId);
       res.json({ success: true, data: analytics });
     } catch (error) {
@@ -169,12 +169,25 @@ export const studentController = {
   // Get subject-wise performance
   getSubjectWisePerformance: async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.userId;
       const performance = await studentService.getSubjectWisePerformance(userId);
       res.json({ success: true, data: performance });
     } catch (error) {
       console.error('Error fetching subject-wise performance:', error);
       res.status(500).json({ success: false, error: 'Failed to fetch subject-wise performance' });
+    }
+  },
+
+  // Get detailed analytics for a specific test attempt
+  getDetailedAttemptAnalytics: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { attemptId } = req.params;
+      const analytics = await studentService.getDetailedAttemptAnalytics(userId, attemptId);
+      res.json({ success: true, data: analytics });
+    } catch (error: any) {
+      console.error('Error fetching detailed attempt analytics:', error);
+      res.status(400).json({ success: false, error: error.message || 'Failed to fetch detailed analytics' });
     }
   },
 };
