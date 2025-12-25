@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.git
+*.log
+azurite-data
+__blobstorage__
+__queuestorage__
+__azurite_db_*
+Dockerfile
+.github
+README.md
+MIGRATION_DEPLOYMENT_PLAN.md
+SETUP.md
+nodemon.json
+tsconfig.json
+package-lock.json (if you want to use npm ci inside)
