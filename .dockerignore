@@ -12,6 +12,6 @@ Dockerfile
 README.md
 MIGRATION_DEPLOYMENT_PLAN.md
 SETUP.md
-nodemon.json
-tsconfig.json
-package-lock.json (if you want to use npm ci inside)
+# nodemon.json
+# tsconfig.json (DO NOT IGNORE THIS, IT IS NEEDED FOR BUILD)
+package-lock.json
