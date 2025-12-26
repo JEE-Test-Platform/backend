@@ -11,9 +11,19 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
+<<<<<<< HEAD
     "azurite:start": "docker-compose -f docker-compose.azurite.yml up -d",
     "azurite:stop": "docker-compose -f docker-compose.azurite.yml down",
     "migrate:images": "ts-node src/scripts/migrateBase64ToBlob.ts",
+=======
+<<<<<<< Updated upstream
+=======
+    "db:seed": "ts-node prisma/seed.ts",
+    "azurite:start": "docker-compose -f docker-compose.azurite.yml up -d",
+    "azurite:stop": "docker-compose -f docker-compose.azurite.yml down",
+    "migrate:images": "ts-node src/scripts/migrateBase64ToBlob.ts",
+>>>>>>> Stashed changes
+>>>>>>> 00450d9 (Superadmin)
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
