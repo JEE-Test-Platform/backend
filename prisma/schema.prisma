@@ -221,6 +221,8 @@ model TestAttempt {
   isPassed            Boolean?
   rank                Int?             // Rank in this institute for this test
   status              AttemptStatus    @default(IN_PROGRESS)
+  aiAnalysisReport    String?          @db.Text
+  analysisStatus      AnalysisStatus   @default(PENDING)
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
@@ -299,4 +301,11 @@ enum TestType {
   MOCK_TEST
   PRACTICE_TEST
   CUSTOM
+}
+
+enum AnalysisStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
 }

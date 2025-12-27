@@ -1,4 +1,4 @@
-import  prisma  from '../utils/prisma';
+import prisma from '../utils/prisma';
 
 export const studentService = {
   // Get student dashboard overview
@@ -482,7 +482,7 @@ export const studentService = {
 
     // The frontend now sends cumulative time, so we just use it directly
     // But if for some reason we get a smaller value, we keep the larger one
-    const finalTimeSpent = timeSpent !== undefined 
+    const finalTimeSpent = timeSpent !== undefined
       ? Math.max(timeSpent, existingAnswer?.timeSpent || 0)
       : existingAnswer?.timeSpent;
 
@@ -658,6 +658,14 @@ export const studentService = {
       data: { rank },
     });
 
+    // Enqueue AI report generation
+    try {
+      const { addReportJob } = require('../lib/queue');
+      await addReportJob(attemptId);
+    } catch (error) {
+      console.error('[AI Report] Failed to enqueue job:', error);
+    }
+
     return {
       ...submittedAttempt,
       rank,
@@ -674,6 +682,17 @@ export const studentService = {
       throw new Error('Student not found');
     }
 
+    const metrics = await studentService.getTestAttemptMetrics(attemptId);
+
+    if (metrics.attempt.studentId !== student.id) {
+      throw new Error('Unauthorized access');
+    }
+
+    return metrics;
+  },
+
+  // Internal helper to get metrics for AI/Reports without userId check
+  getTestAttemptMetrics: async (attemptId: string) => {
     const attempt = await prisma.testAttempt.findUnique({
       where: { id: attemptId },
       include: {
@@ -695,17 +714,14 @@ export const studentService = {
       },
     });
 
-    if (!attempt || attempt.studentId !== student.id) {
-      throw new Error('Unauthorized access');
-    }
-
-    if (attempt.status !== 'SUBMITTED') {
-      throw new Error('Test has not been submitted yet');
+    if (!attempt) {
+      throw new Error('Test attempt not found');
     }
 
     // Calculate subject-wise performance
     const subjectPerformance: any = {};
     const difficultyPerformance: any = {};
+    const behavioralPatterns: any = {};
 
     for (const question of attempt.testActivation.masterTest.questions) {
       const answer = attempt.answers.find(a => a.questionId === question.id);
@@ -713,26 +729,60 @@ export const studentService = {
       const difficulty = question.difficulty;
 
       if (!subjectPerformance[subject]) {
-        subjectPerformance[subject] = { correct: 0, total: 0, marks: 0, totalMarks: 0 };
+        subjectPerformance[subject] = { correct: 0, total: 0, marks: 0, totalMarks: 0, totalTime: 0 };
       }
       if (!difficultyPerformance[difficulty]) {
-        difficultyPerformance[difficulty] = { correct: 0, total: 0 };
+        difficultyPerformance[difficulty] = { correct: 0, total: 0, totalTime: 0 };
+      }
+      if (!behavioralPatterns[subject]) {
+        behavioralPatterns[subject] = {
+          haste_mistakes: 0, // Easy + Wrong + Fast
+          time_sinks: 0,     // Hard + Wrong + Slow
+          strong_basics: 0,  // Easy + Correct + Fast
+          struggling: 0,     // Easy + Wrong + Slow
+          efficiency: 0      // Hard + Correct + Fast/Medium
+        };
       }
 
       subjectPerformance[subject].total++;
       subjectPerformance[subject].totalMarks += question.marks;
       difficultyPerformance[difficulty].total++;
 
-      if (answer?.isCorrect) {
-        subjectPerformance[subject].correct++;
-        subjectPerformance[subject].marks += answer.marksObtained || 0;
-        difficultyPerformance[difficulty].correct++;
+      if (answer) {
+        const timeSpent = answer.timeSpent || 0;
+        subjectPerformance[subject].totalTime += timeSpent;
+        difficultyPerformance[difficulty].totalTime += timeSpent;
+
+        if (answer.isCorrect) {
+          subjectPerformance[subject].correct++;
+          subjectPerformance[subject].marks += answer.marksObtained || 0;
+          difficultyPerformance[difficulty].correct++;
+
+          // Behavioral logic - Correct
+          if (difficulty === 'EASY' && timeSpent < 60) {
+            behavioralPatterns[subject].strong_basics++;
+          } else if (difficulty === 'HARD' && timeSpent < 120) {
+            behavioralPatterns[subject].efficiency++;
+          }
+        } else {
+          // Behavioral logic - Wrong
+          if (difficulty === 'EASY') {
+            if (timeSpent < 45) {
+              behavioralPatterns[subject].haste_mistakes++;
+            } else if (timeSpent > 120) {
+              behavioralPatterns[subject].struggling++;
+            }
+          } else if (difficulty === 'HARD' && timeSpent > 180) {
+            behavioralPatterns[subject].time_sinks++;
+          }
+        }
       }
     }
 
     return {
       attempt: {
         id: attempt.id,
+        studentId: attempt.studentId,
         attemptNumber: attempt.attemptNumber,
         startedAt: attempt.startedAt,
         submittedAt: attempt.submittedAt,
@@ -742,17 +792,22 @@ export const studentService = {
         percentage: attempt.percentage,
         isPassed: attempt.isPassed,
         rank: attempt.rank,
+        status: attempt.status,
+        aiAnalysisReport: attempt.aiAnalysisReport,
+        analysisStatus: attempt.analysisStatus,
       },
       test: {
         title: attempt.testActivation.masterTest.title,
         testType: attempt.testActivation.masterTest.testType,
         totalMarks: attempt.testActivation.masterTest.totalMarks,
         passingMarks: attempt.testActivation.masterTest.passingMarks,
+        duration: attempt.testActivation.masterTest.duration,
       },
       questions: attempt.testActivation.masterTest.questions,
       answers: attempt.answers,
       subjectPerformance,
       difficultyPerformance,
+      behavioralPatterns,
     };
   },
 
@@ -960,10 +1015,10 @@ export const studentService = {
     }
 
     // 1. MISTAKE AND CONCEPTUAL ANALYSIS
-    
+
     // 1.1 Subject/Topic-wise Accuracy
     const subjectWiseAccuracy: Record<string, { correct: number; total: number; percentage: number }> = {};
-    
+
     // 1.2 Difficulty-Pacing Analysis
     const difficultyPacing: Record<string, {
       avgTimeCorrect: number;
@@ -979,7 +1034,7 @@ export const studentService = {
     };
 
     // 2. TEMPERAMENT AND STRATEGY ANALYSIS
-    
+
     // 2.1 Pacing Efficiency
     let totalTimeCorrect = 0;
     let totalTimeIncorrect = 0;
@@ -1060,6 +1115,9 @@ export const studentService = {
       testTitle: attempt.testActivation.masterTest.title,
       testType: attempt.testActivation.masterTest.testType,
       passingMarks: attempt.testActivation.masterTest.passingMarks,
+      duration: attempt.testActivation.masterTest.duration,
+      aiAnalysisReport: attempt.aiAnalysisReport,
+      analysisStatus: attempt.analysisStatus,
     };
 
     // Pacing efficiency
@@ -1126,7 +1184,7 @@ export const studentService = {
 
     // Import leaderboard service
     const { leaderboardService } = require('./leaderboardService');
-    
+
     return await leaderboardService.getStudentRank(student.id, testActivationId);
   },
 
