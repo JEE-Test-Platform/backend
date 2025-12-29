@@ -658,13 +658,13 @@ export const studentService = {
       data: { rank },
     });
 
-    // Enqueue AI report generation
-    try {
-      const { addReportJob } = require('../lib/queue');
-      await addReportJob(attemptId);
-    } catch (error) {
-      console.error('[AI Report] Failed to enqueue job:', error);
-    }
+    // Enqueue AI report generation - COMMENTED OUT FOR NOW
+    // try {
+    //   const { addReportJob } = require('../lib/queue');
+    //   await addReportJob(attemptId);
+    // } catch (error) {
+    //   console.error('[AI Report] Failed to enqueue job:', error);
+    // }
 
     return {
       ...submittedAttempt,
@@ -878,7 +878,7 @@ export const studentService = {
           },
         },
       },
-      orderBy: { submittedAt: 'asc' },
+      orderBy: { submittedAt: 'desc' },
     });
 
     // Score trend
