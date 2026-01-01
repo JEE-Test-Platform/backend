@@ -82,13 +82,14 @@ export const studentController = {
     try {
       const userId = req.user!.userId;
       const { attemptId } = req.params;
-      const { questionId, selectedAnswer, timeSpent } = req.body;
+      const { questionId, selectedAnswer, selectedAnswers, timeSpent } = req.body;
 
       const answer = await studentService.saveAnswer(
         userId,
         attemptId,
         questionId,
-        selectedAnswer,
+        selectedAnswer || null,
+        selectedAnswers || null,
         timeSpent
       );
 

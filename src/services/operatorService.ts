@@ -653,6 +653,13 @@ export const operatorService = {
             questionOrder: q.orderIndex || index + 1,
             explanation: q.explanation,
             imageUrl: q.questionImageUrl,
+            partialMarking: q.partialMarking || false,
+            passageText: q.passageText,
+            parentQuestionId: q.parentQuestionId,
+            columnIItems: q.columnIItems,
+            columnIIItems: q.columnIIItems,
+            correctMatches: q.correctMatches,
+            matchRows: q.matchRows,
           };
 
           // Create the question first
@@ -660,8 +667,12 @@ export const operatorService = {
             data: questionData,
           });
 
-          // Create MCQ options if question type is MCQ
-          if (q.questionType === 'MCQ') {
+          // Create MCQ options if question type is MCQ or MCQ_MULTIPLE
+          if (q.questionType === 'MCQ' || q.questionType === 'MCQ_MULTIPLE') {
+            const correctAnswers = q.questionType === 'MCQ_MULTIPLE' && q.correctAnswers
+              ? q.correctAnswers // Array of correct options like ['A', 'C']
+              : [q.correctAnswer]; // Single correct answer
+
             await Promise.all([
               tx.option.create({
                 data: {
@@ -669,7 +680,7 @@ export const operatorService = {
                   optionLabel: 'A',
                   optionText: q.optionA || '',
                   optionImageUrl: q.optionAImageUrl,
-                  isCorrect: q.correctAnswer === 'A',
+                  isCorrect: correctAnswers.includes('A'),
                 },
               }),
               tx.option.create({
@@ -678,7 +689,7 @@ export const operatorService = {
                   optionLabel: 'B',
                   optionText: q.optionB || '',
                   optionImageUrl: q.optionBImageUrl,
-                  isCorrect: q.correctAnswer === 'B',
+                  isCorrect: correctAnswers.includes('B'),
                 },
               }),
               tx.option.create({
@@ -687,7 +698,7 @@ export const operatorService = {
                   optionLabel: 'C',
                   optionText: q.optionC || '',
                   optionImageUrl: q.optionCImageUrl,
-                  isCorrect: q.correctAnswer === 'C',
+                  isCorrect: correctAnswers.includes('C'),
                 },
               }),
               tx.option.create({
@@ -696,7 +707,7 @@ export const operatorService = {
                   optionLabel: 'D',
                   optionText: q.optionD || '',
                   optionImageUrl: q.optionDImageUrl,
-                  isCorrect: q.correctAnswer === 'D',
+                  isCorrect: correctAnswers.includes('D'),
                 },
               }),
             ]);

@@ -443,7 +443,8 @@ export const studentService = {
     userId: string,
     attemptId: string,
     questionId: string,
-    selectedAnswer: string,
+    selectedAnswer: string | null,
+    selectedAnswers: any[] | null,
     timeSpent?: number
   ) => {
     const student = await prisma.student.findUnique({
@@ -486,7 +487,7 @@ export const studentService = {
       ? Math.max(timeSpent, existingAnswer?.timeSpent || 0)
       : existingAnswer?.timeSpent;
 
-    // Upsert answer
+    // Upsert answer - handle both simple and complex answer types
     const answer = await prisma.studentAnswer.upsert({
       where: {
         attemptId_questionId: {
@@ -495,14 +496,16 @@ export const studentService = {
         },
       },
       update: {
-        selectedAnswer,
+        selectedAnswer: selectedAnswer,
+        selectedAnswers: selectedAnswers,
         timeSpent: finalTimeSpent,
         updatedAt: new Date(),
       },
       create: {
         attemptId,
         questionId,
-        selectedAnswer,
+        selectedAnswer: selectedAnswer,
+        selectedAnswers: selectedAnswers,
         timeSpent: timeSpent || 0,
       },
     });
@@ -593,13 +596,87 @@ export const studentService = {
       let isCorrect = false;
       let marksObtained = 0;
 
-      if (question.questionType === 'MCQ') {
+      if (question.questionType === 'MCQ' || question.questionType === 'COMPREHENSION_SUB') {
         // Find the correct option
         const correctOption = question.options.find(o => o.isCorrect);
         isCorrect = answer.selectedAnswer === correctOption?.optionLabel;
         marksObtained = isCorrect ? question.marks : 0;
+      } else if (question.questionType === 'MCQ_MULTIPLE') {
+        // Get all correct options
+        const correctOptions = question.options.filter(o => o.isCorrect).map(o => o.optionLabel).sort();
+        const studentAnswers = (answer.selectedAnswers as string[] || []).sort();
+
+        // Check if all answers match
+        const allCorrect = correctOptions.length === studentAnswers.length &&
+                          correctOptions.every((opt, idx) => opt === studentAnswers[idx]);
+
+        if (allCorrect) {
+          isCorrect = true;
+          marksObtained = question.marks;
+        } else if (question.partialMarking && studentAnswers.length > 0) {
+          // Partial marking: Give credit for each correct selection and deduct for wrong ones
+          const correctSelected = studentAnswers.filter(ans => correctOptions.includes(ans)).length;
+          const incorrectSelected = studentAnswers.filter(ans => !correctOptions.includes(ans)).length;
+          const netCorrect = correctSelected - incorrectSelected;
+
+          if (netCorrect > 0) {
+            marksObtained = (netCorrect / correctOptions.length) * question.marks;
+          } else {
+            marksObtained = 0;
+          }
+          isCorrect = false; // Partial credit, not fully correct
+        } else {
+          isCorrect = false;
+          marksObtained = 0;
+        }
+      } else if (question.questionType === 'MATCH_FOLLOWING') {
+        // Get correct matches - JEE Advanced format (one-to-many)
+        const correctMatches = question.correctMatches as Array<{from: string; to: string | string[]}> || [];
+        const studentMatches = answer.selectedAnswers as Array<{from: string; to: string | string[]}> || [];
+
+        // Normalize to array format
+        const normalizedCorrect = correctMatches.map(m => ({
+          from: m.from,
+          to: Array.isArray(m.to) ? m.to : [m.to]
+        }));
+
+        const normalizedStudent = studentMatches.map(m => ({
+          from: m.from,
+          to: Array.isArray(m.to) ? m.to : [m.to]
+        }));
+
+        // Check each Column I item
+        let totalCorrect = 0;
+        let totalItems = normalizedCorrect.length;
+
+        for (const correctMatch of normalizedCorrect) {
+          const studentMatch = normalizedStudent.find(sm => sm.from === correctMatch.from);
+
+          if (studentMatch) {
+            // Check if student selected exactly the correct options
+            const correctOptions = correctMatch.to.sort();
+            const studentOptions = studentMatch.to.sort();
+
+            const isExactMatch = correctOptions.length === studentOptions.length &&
+                                correctOptions.every((opt, idx) => opt === studentOptions[idx]);
+
+            if (isExactMatch) {
+              totalCorrect++;
+            }
+          }
+        }
+
+        // Calculate marks
+        if (totalCorrect === totalItems) {
+          isCorrect = true;
+          marksObtained = question.marks;
+        } else {
+          // Partial credit: proportional to correct matches
+          marksObtained = (totalCorrect / totalItems) * question.marks;
+          isCorrect = false;
+        }
       } else if (question.questionType === 'NUMERICAL' || question.questionType === 'TRUE_FALSE') {
-        isCorrect = answer.selectedAnswer?.toLowerCase() === question.correctAnswer.toLowerCase();
+        isCorrect = answer.selectedAnswer?.toLowerCase() === question.correctAnswer?.toLowerCase();
         marksObtained = isCorrect ? question.marks : 0;
       }
 

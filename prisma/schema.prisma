@@ -182,11 +182,28 @@ model Question {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
+  // For MCQ_MULTIPLE: Enable partial marking
+  partialMarking  Boolean          @default(false)
+
+  // For COMPREHENSION: Passage text and parent-child relationship
+  passageText     String?          @db.Text
+  parentQuestionId String?
+
+  // For MATCH_FOLLOWING: Column items and correct matches
+  columnIItems    Json?            // Array of {label: "A", text: "Item 1"}
+  columnIIItems   Json?            // Array of {label: "1", text: "Match 1"}
+  correctMatches  Json?            // Array of {from: "A", to: "1"}
+  matchRows       Int?             // Number of rows (3, 4, or 5)
+
   masterTest      MasterTest       @relation(fields: [masterTestId], references: [id], onDelete: Cascade)
 
   // Question relations
   options         Option[]         // MCQ options as separate table
   answers         StudentAnswer[]
+
+  // Comprehension parent-child relationship
+  subQuestions    Question[]       @relation("ComprehensionQuestions")
+  parentQuestion  Question?        @relation("ComprehensionQuestions", fields: [parentQuestionId], references: [id], onDelete: Cascade)
 
   @@map("questions")
 }
@@ -242,6 +259,7 @@ model StudentAnswer {
   questionId      String
   selectedAnswer  String?      // For MCQ: option label (A/B/C/D), for Numerical: the number
   answerText      String?      // Additional text if needed
+  selectedAnswers Json?        // For MCQ_MULTIPLE: array of labels ["A", "C"], for MATCH_FOLLOWING: array of {from, to}
   isCorrect       Boolean?
   marksObtained   Int?
   timeSpent       Int?         // Time in seconds
@@ -276,9 +294,13 @@ enum Subject {
 }
 
 enum QuestionType {
-  MCQ
-  NUMERICAL
-  TRUE_FALSE
+  MCQ                    // Single correct answer
+  MCQ_MULTIPLE           // Multiple correct answers
+  NUMERICAL              // Numerical answer
+  TRUE_FALSE             // True/False question
+  MATCH_FOLLOWING        // Match the following
+  COMPREHENSION          // Paragraph-based question (parent)
+  COMPREHENSION_SUB      // Sub-question under comprehension
 }
 
 enum Difficulty {
