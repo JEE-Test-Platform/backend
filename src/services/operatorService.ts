@@ -655,7 +655,8 @@ export const operatorService = {
             imageUrl: q.questionImageUrl,
             partialMarking: q.partialMarking || false,
             passageText: q.passageText,
-            parentQuestionId: q.parentQuestionId,
+            // Only set parentQuestionId if it's a valid value (for COMPREHENSION_SUB questions)
+            ...(q.parentQuestionId && { parentQuestionId: q.parentQuestionId }),
             columnIItems: q.columnIItems,
             columnIIItems: q.columnIIItems,
             correctMatches: q.correctMatches,
@@ -667,8 +668,11 @@ export const operatorService = {
             data: questionData,
           });
 
-          // Create MCQ options if question type is MCQ or MCQ_MULTIPLE
-          if (q.questionType === 'MCQ' || q.questionType === 'MCQ_MULTIPLE') {
+          // Create MCQ options for all question types that use A, B, C, D options
+          if (q.questionType === 'MCQ' ||
+              q.questionType === 'MCQ_MULTIPLE' ||
+              q.questionType === 'MATCH_FOLLOWING' ||
+              q.questionType === 'COMPREHENSION_SUB') {
             const correctAnswers = q.questionType === 'MCQ_MULTIPLE' && q.correctAnswers
               ? q.correctAnswers // Array of correct options like ['A', 'C']
               : [q.correctAnswer]; // Single correct answer
