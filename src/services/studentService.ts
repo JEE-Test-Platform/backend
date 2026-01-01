@@ -630,51 +630,9 @@ export const studentService = {
           marksObtained = 0;
         }
       } else if (question.questionType === 'MATCH_FOLLOWING') {
-        // Get correct matches - JEE Advanced format (one-to-many)
-        const correctMatches = question.correctMatches as Array<{from: string; to: string | string[]}> || [];
-        const studentMatches = answer.selectedAnswers as Array<{from: string; to: string | string[]}> || [];
-
-        // Normalize to array format
-        const normalizedCorrect = correctMatches.map(m => ({
-          from: m.from,
-          to: Array.isArray(m.to) ? m.to : [m.to]
-        }));
-
-        const normalizedStudent = studentMatches.map(m => ({
-          from: m.from,
-          to: Array.isArray(m.to) ? m.to : [m.to]
-        }));
-
-        // Check each Column I item
-        let totalCorrect = 0;
-        let totalItems = normalizedCorrect.length;
-
-        for (const correctMatch of normalizedCorrect) {
-          const studentMatch = normalizedStudent.find(sm => sm.from === correctMatch.from);
-
-          if (studentMatch) {
-            // Check if student selected exactly the correct options
-            const correctOptions = correctMatch.to.sort();
-            const studentOptions = studentMatch.to.sort();
-
-            const isExactMatch = correctOptions.length === studentOptions.length &&
-                                correctOptions.every((opt, idx) => opt === studentOptions[idx]);
-
-            if (isExactMatch) {
-              totalCorrect++;
-            }
-          }
-        }
-
-        // Calculate marks
-        if (totalCorrect === totalItems) {
-          isCorrect = true;
-          marksObtained = question.marks;
-        } else {
-          // Partial credit: proportional to correct matches
-          marksObtained = (totalCorrect / totalItems) * question.marks;
-          isCorrect = false;
-        }
+        // JEE Main format - Treat as regular MCQ with coded answers
+        isCorrect = answer.selectedAnswer === question.correctAnswer;
+        marksObtained = isCorrect ? question.marks : 0;
       } else if (question.questionType === 'NUMERICAL' || question.questionType === 'TRUE_FALSE') {
         isCorrect = answer.selectedAnswer?.toLowerCase() === question.correctAnswer?.toLowerCase();
         marksObtained = isCorrect ? question.marks : 0;
