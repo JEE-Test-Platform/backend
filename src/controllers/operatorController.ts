@@ -252,4 +252,125 @@ export const operatorController = {
       });
     }
   },
+
+  // Create draft test (metadata only)
+  createDraftTest: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const testData = req.body;
+
+      console.log('📝 Creating draft test:', testData.title);
+
+      const draftTest = await operatorService.createDraftTest(userId, testData);
+
+      res.json({
+        success: true,
+        data: draftTest,
+        message: 'Draft test created successfully',
+      });
+    } catch (error: any) {
+      console.error('Error creating draft test:', error);
+      res.status(400).json({ success: false, message: error.message || 'Failed to create draft test' });
+    }
+  },
+
+  // Get draft test for editing
+  getDraftTest: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { testId } = req.params;
+
+      const test = await operatorService.getDraftTest(userId, testId);
+
+      res.json({ success: true, data: test });
+    } catch (error: any) {
+      console.error('Error fetching draft test:', error);
+      res.status(404).json({ success: false, message: error.message || 'Failed to fetch draft test' });
+    }
+  },
+
+  // Add question to test
+  addQuestion: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { testId } = req.params;
+      const questionData = req.body;
+
+      console.log('➕ Adding question to test:', testId);
+
+      const question = await operatorService.addQuestionToTest(userId, testId, questionData);
+
+      res.json({
+        success: true,
+        data: question,
+        message: 'Question added successfully',
+      });
+    } catch (error: any) {
+      console.error('Error adding question:', error);
+      res.status(400).json({ success: false, message: error.message || 'Failed to add question' });
+    }
+  },
+
+  // Update question
+  updateQuestion: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { testId, questionId } = req.params;
+      const questionData = req.body;
+
+      console.log('✏️ Updating question:', questionId);
+
+      const question = await operatorService.updateQuestion(userId, testId, questionId, questionData);
+
+      res.json({
+        success: true,
+        data: question,
+        message: 'Question updated successfully',
+      });
+    } catch (error: any) {
+      console.error('Error updating question:', error);
+      res.status(400).json({ success: false, message: error.message || 'Failed to update question' });
+    }
+  },
+
+  // Delete question
+  deleteQuestion: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { testId, questionId } = req.params;
+
+      console.log('🗑️ Deleting question:', questionId);
+
+      await operatorService.deleteQuestion(userId, testId, questionId);
+
+      res.json({
+        success: true,
+        message: 'Question deleted successfully',
+      });
+    } catch (error: any) {
+      console.error('Error deleting question:', error);
+      res.status(400).json({ success: false, message: error.message || 'Failed to delete question' });
+    }
+  },
+
+  // Publish test
+  publishTest: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { testId } = req.params;
+
+      console.log('🚀 Publishing test:', testId);
+
+      const test = await operatorService.publishTest(userId, testId);
+
+      res.json({
+        success: true,
+        data: test,
+        message: 'Test published successfully',
+      });
+    } catch (error: any) {
+      console.error('Error publishing test:', error);
+      res.status(400).json({ success: false, message: error.message || 'Failed to publish test' });
+    }
+  },
 };

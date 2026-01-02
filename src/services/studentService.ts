@@ -596,46 +596,61 @@ export const studentService = {
       let isCorrect = false;
       let marksObtained = 0;
 
-      if (question.questionType === 'MCQ' || question.questionType === 'COMPREHENSION_SUB') {
-        // Find the correct option
-        const correctOption = question.options.find(o => o.isCorrect);
-        isCorrect = answer.selectedAnswer === correctOption?.optionLabel;
-        marksObtained = isCorrect ? question.marks : 0;
-      } else if (question.questionType === 'MCQ_MULTIPLE') {
-        // Get all correct options
-        const correctOptions = question.options.filter(o => o.isCorrect).map(o => o.optionLabel).sort();
-        const studentAnswers = (answer.selectedAnswers as string[] || []).sort();
+      switch (question.questionType) {
+        case 'MCQ':
+        case 'COMPREHENSION_SUB': {
+          // Find the correct option
+          const correctOption = question.options.find(o => o.isCorrect);
+          isCorrect = answer.selectedAnswer === correctOption?.optionLabel;
+          marksObtained = isCorrect ? question.marks : 0;
+          break;
+        }
+        case 'MCQ_MULTIPLE': {
+          // Get all correct options
+          const correctOptions = question.options.filter(o => o.isCorrect).map(o => o.optionLabel).sort();
+          const studentAnswers = ((answer.selectedAnswers as string[]) || []).sort();
 
-        // Check if all answers match
-        const allCorrect = correctOptions.length === studentAnswers.length &&
-                          correctOptions.every((opt, idx) => opt === studentAnswers[idx]);
+          // Check if all answers match
+          const allCorrect = correctOptions.length === studentAnswers.length &&
+            correctOptions.every((opt, idx) => opt === studentAnswers[idx]);
 
-        if (allCorrect) {
-          isCorrect = true;
-          marksObtained = question.marks;
-        } else if (question.partialMarking && studentAnswers.length > 0) {
-          // Partial marking: Give credit for each correct selection and deduct for wrong ones
-          const correctSelected = studentAnswers.filter(ans => correctOptions.includes(ans)).length;
-          const incorrectSelected = studentAnswers.filter(ans => !correctOptions.includes(ans)).length;
-          const netCorrect = correctSelected - incorrectSelected;
+          if (allCorrect) {
+            isCorrect = true;
+            marksObtained = question.marks;
+          } else if (question.partialMarking && studentAnswers.length > 0) {
+            // Partial marking: Give credit for each correct selection and deduct for wrong ones
+            const correctSelected = studentAnswers.filter(ans => correctOptions.includes(ans)).length;
+            const incorrectSelected = studentAnswers.filter(ans => !correctOptions.includes(ans)).length;
+            const netCorrect = correctSelected - incorrectSelected;
 
-          if (netCorrect > 0) {
-            marksObtained = (netCorrect / correctOptions.length) * question.marks;
+            if (netCorrect > 0) {
+              marksObtained = (netCorrect / correctOptions.length) * question.marks;
+            } else {
+              marksObtained = 0;
+            }
+            isCorrect = false; // Partial credit, not fully correct
           } else {
+            isCorrect = false;
             marksObtained = 0;
           }
-          isCorrect = false; // Partial credit, not fully correct
-        } else {
-          isCorrect = false;
-          marksObtained = 0;
+          break;
         }
-      } else if (question.questionType === 'MATCH_FOLLOWING') {
-        // JEE Main format - Treat as regular MCQ with coded answers
-        isCorrect = answer.selectedAnswer === question.correctAnswer;
-        marksObtained = isCorrect ? question.marks : 0;
-      } else if (question.questionType === 'NUMERICAL' || question.questionType === 'TRUE_FALSE') {
-        isCorrect = answer.selectedAnswer?.toLowerCase() === question.correctAnswer?.toLowerCase();
-        marksObtained = isCorrect ? question.marks : 0;
+        case 'MATCH_FOLLOWING': {
+          // JEE Main format - Treat as regular MCQ with coded answers
+          isCorrect = answer.selectedAnswer === question.correctAnswer;
+          marksObtained = isCorrect ? question.marks : 0;
+          break;
+        }
+        case 'NUMERICAL':
+        case 'TRUE_FALSE': {
+          isCorrect = answer.selectedAnswer?.toLowerCase() === question.correctAnswer?.toLowerCase();
+          marksObtained = isCorrect ? question.marks : 0;
+          break;
+        }
+        case 'COMPREHENSION': {
+          // Comprehension parent questions don't have answers
+          break;
+        }
       }
 
       obtainedMarks += marksObtained;

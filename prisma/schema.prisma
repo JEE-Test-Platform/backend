@@ -130,6 +130,7 @@ model MasterTest {
   passingMarks    Int
   instructions    String?
   isActive        Boolean       @default(true)
+  status          TestStatus    @default(DRAFT)  // DRAFT or PUBLISHED
   createdById     String        // Operator who created this
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -330,4 +331,9 @@ enum AnalysisStatus {
   IN_PROGRESS
   COMPLETED
   FAILED
+}
+
+enum TestStatus {
+  DRAFT
+  PUBLISHED
 }

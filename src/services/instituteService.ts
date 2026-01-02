@@ -333,8 +333,8 @@ export const instituteService = {
       }
     }
 
-    return { 
-      count: successCount, 
+    return {
+      count: successCount,
       total: studentsData.length,
       errors: errors.length > 0 ? errors : undefined,
     };
@@ -370,10 +370,13 @@ export const instituteService = {
     };
   },
 
-  // Get all master tests
+  // Get all master tests (only PUBLISHED tests visible to institutes)
   getMasterTests: async () => {
     const tests = await prisma.masterTest.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        status: 'PUBLISHED',  // Only show published tests to institutes
+      },
       include: {
         createdBy: {
           select: {
@@ -751,7 +754,7 @@ export const instituteService = {
     // Calculate date range based on period
     const now = new Date();
     let startDate: Date;
-    
+
     switch (period) {
       case 'quarter':
         startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
@@ -772,7 +775,7 @@ export const instituteService = {
 
     // Get all test activations for this institute
     const totalTestsActivated = await prisma.instituteTestActivation.count({
-      where: { 
+      where: {
         instituteId: institute.id,
         createdAt: { gte: startDate },
       },
@@ -826,14 +829,14 @@ export const instituteService = {
       ? percentages.reduce((sum, p) => sum + p, 0) / percentages.length
       : 0;
 
-    const passedAttempts = attempts.filter(a => 
+    const passedAttempts = attempts.filter(a =>
       (a.obtainedMarks || 0) >= (a.testActivation.masterTest.passingMarks || 0)
     ).length;
     const passRate = totalAttempts > 0 ? (passedAttempts / totalAttempts) * 100 : 0;
 
     // Subject-wise Performance
     const subjectStats: Record<string, { totalQuestions: number; correctAnswers: number; totalMarks: number; obtainedMarks: number }> = {};
-    
+
     for (const attempt of attempts) {
       for (const answer of attempt.answers) {
         const subject = answer.question.subject;
@@ -859,7 +862,7 @@ export const instituteService = {
 
     // Difficulty-wise Performance
     const difficultyStats: Record<string, { totalQuestions: number; correctAnswers: number; totalMarks: number; obtainedMarks: number }> = {};
-    
+
     for (const attempt of attempts) {
       for (const answer of attempt.answers) {
         const difficulty = answer.question.difficulty;
@@ -885,7 +888,7 @@ export const instituteService = {
 
     // Question Type Performance
     const questionTypeStats: Record<string, { totalQuestions: number; correctAnswers: number; totalMarks: number; obtainedMarks: number }> = {};
-    
+
     for (const attempt of attempts) {
       for (const answer of attempt.answers) {
         const qType = answer.question.questionType;
@@ -911,7 +914,7 @@ export const instituteService = {
 
     // Test Type Performance
     const testTypeStats: Record<string, { activations: Set<string>; attempts: number; totalPercentage: number }> = {};
-    
+
     for (const attempt of attempts) {
       const testType = attempt.testActivation.masterTest.testType;
       if (!testTypeStats[testType]) {
@@ -931,7 +934,7 @@ export const instituteService = {
 
     // Top Performers
     const studentPerformance: Record<string, { name: string; totalPercentage: number; testsAttempted: number }> = {};
-    
+
     for (const attempt of attempts) {
       const studentId = attempt.student.id;
       const studentName = `${attempt.student.firstName} ${attempt.student.lastName}`;
@@ -954,9 +957,9 @@ export const instituteService = {
 
     // Recent Trends (monthly breakdown)
     const trendData: Record<string, { totalPercentage: number; count: number }> = {};
-    
+
     for (const attempt of attempts) {
-      const monthYear = attempt.submittedAt 
+      const monthYear = attempt.submittedAt
         ? `${attempt.submittedAt.getFullYear()}-${String(attempt.submittedAt.getMonth() + 1).padStart(2, '0')}`
         : '';
       if (monthYear) {
@@ -1041,7 +1044,7 @@ export const instituteService = {
 
     // Import leaderboard service
     const { leaderboardService } = require('./leaderboardService');
-    
+
     return await leaderboardService.getInstituteTopPerformers(institute.id, limit);
   },
 
@@ -1057,7 +1060,7 @@ export const instituteService = {
 
     // Import leaderboard service
     const { leaderboardService } = require('./leaderboardService');
-    
+
     return await leaderboardService.getInstituteLeaderboardOverview(institute.id);
   },
 
@@ -1073,7 +1076,7 @@ export const instituteService = {
 
     // Import leaderboard service
     const { leaderboardService } = require('./leaderboardService');
-    
+
     return await leaderboardService.getTestLeaderboard(testActivationId, institute.id);
   },
 
@@ -1148,14 +1151,14 @@ export const instituteService = {
     const highestScore = percentages.length > 0 ? Math.max(...percentages) : 0;
     const lowestScore = percentages.length > 0 ? Math.min(...percentages) : 0;
 
-    const passedTests = attempts.filter(a => 
+    const passedTests = attempts.filter(a =>
       (a.obtainedMarks || 0) >= (a.testActivation.masterTest.passingMarks || 0)
     ).length;
     const passRate = totalTests > 0 ? (passedTests / totalTests) * 100 : 0;
 
     // Subject-wise breakdown
     const subjectStats: Record<string, { total: number; correct: number; totalMarks: number; obtained: number }> = {};
-    
+
     for (const attempt of attempts) {
       for (const answer of attempt.answers) {
         const subject = answer.question.subject;
@@ -1181,7 +1184,7 @@ export const instituteService = {
 
     // Difficulty breakdown
     const difficultyStats: Record<string, { total: number; correct: number }> = {};
-    
+
     for (const attempt of attempts) {
       for (const answer of attempt.answers) {
         const difficulty = answer.question.difficulty;
@@ -1252,11 +1255,11 @@ export const instituteService = {
       insights: {
         strengths,
         weaknesses,
-        recommendation: averageScore < 50 
+        recommendation: averageScore < 50
           ? 'Focus on fundamentals and practice more questions'
-          : averageScore < 70 
-          ? 'Good progress! Target weak areas for improvement'
-          : 'Excellent performance! Maintain consistency',
+          : averageScore < 70
+            ? 'Good progress! Target weak areas for improvement'
+            : 'Excellent performance! Maintain consistency',
       },
     };
   },
@@ -1337,14 +1340,14 @@ export const instituteService = {
     const highestScore = percentages.length > 0 ? Math.max(...percentages) : 0;
     const lowestScore = percentages.length > 0 ? Math.min(...percentages) : 0;
 
-    const passedAttempts = attempts.filter(a => 
+    const passedAttempts = attempts.filter(a =>
       (a.obtainedMarks || 0) >= (activation.masterTest.passingMarks || 0)
     ).length;
     const passRate = totalAttempts > 0 ? (passedAttempts / totalAttempts) * 100 : 0;
 
     // Question-wise analysis
     const questionStats: Record<string, { total: number; correct: number; avgTime: number; timeCount: number }> = {};
-    
+
     for (const attempt of attempts) {
       for (const answer of attempt.answers) {
         const qId = answer.question.id;
@@ -1364,7 +1367,7 @@ export const instituteService = {
 
     // Subject breakdown
     const subjectStats: Record<string, { total: number; correct: number }> = {};
-    
+
     for (const attempt of attempts) {
       for (const answer of attempt.answers) {
         const subject = answer.question.subject;
@@ -1387,7 +1390,7 @@ export const instituteService = {
 
     // Difficulty breakdown
     const difficultyStats: Record<string, { total: number; correct: number }> = {};
-    
+
     for (const attempt of attempts) {
       for (const answer of attempt.answers) {
         const difficulty = answer.question.difficulty;

@@ -30,4 +30,12 @@ router.post('/csv/upload', csvUpload, imageUrlValidator, operatorController.crea
 // Rich text editor routes (with image URL validation)
 router.post('/tests/create-with-questions', imageUrlValidator, operatorController.createTestWithQuestions);
 
+// Draft test workflow routes
+router.post('/tests/draft', operatorController.createDraftTest);
+router.get('/tests/:testId/draft', operatorController.getDraftTest);
+router.post('/tests/:testId/questions', imageUrlValidator, operatorController.addQuestion);
+router.put('/tests/:testId/questions/:questionId', imageUrlValidator, operatorController.updateQuestion);
+router.delete('/tests/:testId/questions/:questionId', operatorController.deleteQuestion);
+router.patch('/tests/:testId/publish', operatorController.publishTest);
+
 export default router;

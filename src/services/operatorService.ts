@@ -127,6 +127,7 @@ export const operatorService = {
       totalQuestions: test.questions.length,
       activationsCount: test.activations.length,
       isActive: test.isActive,
+      status: test.status,
       createdAt: test.createdAt.toISOString(),
     }));
 
@@ -453,6 +454,7 @@ export const operatorService = {
       totalQuestions: test.questions.length,
       activationsCount: test.activations.length,
       isActive: test.isActive,
+      status: test.status,  // Include status for draft/published indicator
       createdAt: test.createdAt.toISOString(),
       updatedAt: test.updatedAt.toISOString(),
     }));
@@ -670,9 +672,9 @@ export const operatorService = {
 
           // Create MCQ options for all question types that use A, B, C, D options
           if (q.questionType === 'MCQ' ||
-              q.questionType === 'MCQ_MULTIPLE' ||
-              q.questionType === 'MATCH_FOLLOWING' ||
-              q.questionType === 'COMPREHENSION_SUB') {
+            q.questionType === 'MCQ_MULTIPLE' ||
+            q.questionType === 'MATCH_FOLLOWING' ||
+            q.questionType === 'COMPREHENSION_SUB') {
             const correctAnswers = q.questionType === 'MCQ_MULTIPLE' && q.correctAnswers
               ? q.correctAnswers // Array of correct options like ['A', 'C']
               : [q.correctAnswer]; // Single correct answer
@@ -728,5 +730,361 @@ export const operatorService = {
     });
 
     return masterTest;
+  },
+
+  // Create draft test (metadata only, no questions yet)
+  createDraftTest: async (userId: string, testData: CreateMasterTestDTO) => {
+    const operator = await prisma.operator.findUnique({
+      where: { userId },
+    });
+
+    if (!operator) {
+      throw new Error('Operator not found');
+    }
+
+    const draftTest = await prisma.masterTest.create({
+      data: {
+        title: testData.title,
+        description: testData.description,
+        testType: testData.testType,
+        duration: testData.duration,
+        totalMarks: testData.totalMarks,
+        passingMarks: testData.passingMarks,
+        instructions: testData.instructions,
+        createdById: operator.id,
+        isActive: true,
+        status: 'DRAFT',
+      },
+    });
+
+    return draftTest;
+  },
+
+  // Get draft test with questions for editing
+  getDraftTest: async (userId: string, testId: string) => {
+    const operator = await prisma.operator.findUnique({
+      where: { userId },
+    });
+
+    if (!operator) {
+      throw new Error('Operator not found');
+    }
+
+    const test = await prisma.masterTest.findUnique({
+      where: { id: testId },
+      include: {
+        questions: {
+          include: {
+            options: true,
+          },
+          orderBy: { questionOrder: 'asc' },
+        },
+      },
+    });
+
+    if (!test) {
+      throw new Error('Test not found');
+    }
+
+    if (test.createdById !== operator.id) {
+      throw new Error('You do not have permission to access this test');
+    }
+
+    return test;
+  },
+
+  // Add a single question to an existing test
+  addQuestionToTest: async (userId: string, testId: string, questionData: any) => {
+    const operator = await prisma.operator.findUnique({
+      where: { userId },
+    });
+
+    if (!operator) {
+      throw new Error('Operator not found');
+    }
+
+    const test = await prisma.masterTest.findUnique({
+      where: { id: testId },
+      include: { questions: { select: { id: true } } },
+    });
+
+    if (!test) {
+      throw new Error('Test not found');
+    }
+
+    if (test.createdById !== operator.id) {
+      throw new Error('You do not have permission to modify this test');
+    }
+
+    if (test.status === 'PUBLISHED') {
+      throw new Error('Cannot add questions to a published test');
+    }
+
+    const questionOrder = test.questions.length + 1;
+
+    // Create question with options in a transaction
+    const createdQuestion = await prisma.$transaction(async (tx) => {
+      const question = await tx.question.create({
+        data: {
+          masterTestId: testId,
+          questionText: questionData.questionText,
+          questionType: questionData.questionType as QuestionType,
+          subject: questionData.subject as Subject,
+          difficulty: questionData.difficulty as Difficulty,
+          correctAnswer: questionData.correctAnswer,
+          marks: questionData.marks,
+          questionOrder: questionData.orderIndex || questionOrder,
+          explanation: questionData.explanation,
+          imageUrl: questionData.questionImageUrl,
+          partialMarking: questionData.partialMarking || false,
+          passageText: questionData.passageText,
+          columnIItems: questionData.columnIItems,
+          columnIIItems: questionData.columnIIItems,
+          correctMatches: questionData.correctMatches,
+          matchRows: questionData.matchRows,
+        },
+      });
+
+      // Create MCQ options
+      if (['MCQ', 'MCQ_MULTIPLE', 'MATCH_FOLLOWING', 'COMPREHENSION_SUB'].includes(questionData.questionType)) {
+        const correctAnswers = questionData.questionType === 'MCQ_MULTIPLE' && questionData.correctAnswers
+          ? questionData.correctAnswers
+          : [questionData.correctAnswer];
+
+        await tx.option.createMany({
+          data: [
+            {
+              questionId: question.id,
+              optionLabel: 'A',
+              optionText: questionData.optionA || '',
+              optionImageUrl: questionData.optionAImageUrl,
+              isCorrect: correctAnswers.includes('A'),
+            },
+            {
+              questionId: question.id,
+              optionLabel: 'B',
+              optionText: questionData.optionB || '',
+              optionImageUrl: questionData.optionBImageUrl,
+              isCorrect: correctAnswers.includes('B'),
+            },
+            {
+              questionId: question.id,
+              optionLabel: 'C',
+              optionText: questionData.optionC || '',
+              optionImageUrl: questionData.optionCImageUrl,
+              isCorrect: correctAnswers.includes('C'),
+            },
+            {
+              questionId: question.id,
+              optionLabel: 'D',
+              optionText: questionData.optionD || '',
+              optionImageUrl: questionData.optionDImageUrl,
+              isCorrect: correctAnswers.includes('D'),
+            },
+          ],
+        });
+      }
+
+      // Fetch question with options
+      return tx.question.findUnique({
+        where: { id: question.id },
+        include: { options: true },
+      });
+    });
+
+    return createdQuestion;
+  },
+
+  // Update an existing question
+  updateQuestion: async (userId: string, testId: string, questionId: string, questionData: any) => {
+    const operator = await prisma.operator.findUnique({
+      where: { userId },
+    });
+
+    if (!operator) {
+      throw new Error('Operator not found');
+    }
+
+    const test = await prisma.masterTest.findUnique({
+      where: { id: testId },
+    });
+
+    if (!test) {
+      throw new Error('Test not found');
+    }
+
+    if (test.createdById !== operator.id) {
+      throw new Error('You do not have permission to modify this test');
+    }
+
+    if (test.status === 'PUBLISHED') {
+      throw new Error('Cannot modify questions in a published test');
+    }
+
+    const question = await prisma.question.findUnique({
+      where: { id: questionId },
+    });
+
+    if (!question || question.masterTestId !== testId) {
+      throw new Error('Question not found');
+    }
+
+    // Update question with options in a transaction
+    const updatedQuestion = await prisma.$transaction(async (tx) => {
+      // Update the question
+      const updated = await tx.question.update({
+        where: { id: questionId },
+        data: {
+          questionText: questionData.questionText,
+          questionType: questionData.questionType as QuestionType,
+          subject: questionData.subject as Subject,
+          difficulty: questionData.difficulty as Difficulty,
+          correctAnswer: questionData.correctAnswer,
+          marks: questionData.marks,
+          explanation: questionData.explanation,
+          imageUrl: questionData.questionImageUrl,
+          partialMarking: questionData.partialMarking || false,
+          passageText: questionData.passageText,
+          columnIItems: questionData.columnIItems,
+          columnIIItems: questionData.columnIIItems,
+          correctMatches: questionData.correctMatches,
+          matchRows: questionData.matchRows,
+        },
+      });
+
+      // Delete existing options and recreate
+      await tx.option.deleteMany({
+        where: { questionId },
+      });
+
+      // Create new options if applicable
+      if (['MCQ', 'MCQ_MULTIPLE', 'MATCH_FOLLOWING', 'COMPREHENSION_SUB'].includes(questionData.questionType)) {
+        const correctAnswers = questionData.questionType === 'MCQ_MULTIPLE' && questionData.correctAnswers
+          ? questionData.correctAnswers
+          : [questionData.correctAnswer];
+
+        await tx.option.createMany({
+          data: [
+            {
+              questionId: updated.id,
+              optionLabel: 'A',
+              optionText: questionData.optionA || '',
+              optionImageUrl: questionData.optionAImageUrl,
+              isCorrect: correctAnswers.includes('A'),
+            },
+            {
+              questionId: updated.id,
+              optionLabel: 'B',
+              optionText: questionData.optionB || '',
+              optionImageUrl: questionData.optionBImageUrl,
+              isCorrect: correctAnswers.includes('B'),
+            },
+            {
+              questionId: updated.id,
+              optionLabel: 'C',
+              optionText: questionData.optionC || '',
+              optionImageUrl: questionData.optionCImageUrl,
+              isCorrect: correctAnswers.includes('C'),
+            },
+            {
+              questionId: updated.id,
+              optionLabel: 'D',
+              optionText: questionData.optionD || '',
+              optionImageUrl: questionData.optionDImageUrl,
+              isCorrect: correctAnswers.includes('D'),
+            },
+          ],
+        });
+      }
+
+      // Fetch updated question with options
+      return tx.question.findUnique({
+        where: { id: questionId },
+        include: { options: true },
+      });
+    });
+
+    return updatedQuestion;
+  },
+
+  // Delete a question from a test
+  deleteQuestion: async (userId: string, testId: string, questionId: string) => {
+    const operator = await prisma.operator.findUnique({
+      where: { userId },
+    });
+
+    if (!operator) {
+      throw new Error('Operator not found');
+    }
+
+    const test = await prisma.masterTest.findUnique({
+      where: { id: testId },
+    });
+
+    if (!test) {
+      throw new Error('Test not found');
+    }
+
+    if (test.createdById !== operator.id) {
+      throw new Error('You do not have permission to modify this test');
+    }
+
+    if (test.status === 'PUBLISHED') {
+      throw new Error('Cannot delete questions from a published test');
+    }
+
+    const question = await prisma.question.findUnique({
+      where: { id: questionId },
+    });
+
+    if (!question || question.masterTestId !== testId) {
+      throw new Error('Question not found');
+    }
+
+    // Delete question (options will be cascade deleted)
+    await prisma.question.delete({
+      where: { id: questionId },
+    });
+
+    return { success: true };
+  },
+
+  // Publish a draft test (makes it visible to institutes)
+  publishTest: async (userId: string, testId: string) => {
+    const operator = await prisma.operator.findUnique({
+      where: { userId },
+    });
+
+    if (!operator) {
+      throw new Error('Operator not found');
+    }
+
+    const test = await prisma.masterTest.findUnique({
+      where: { id: testId },
+      include: { questions: { select: { id: true } } },
+    });
+
+    if (!test) {
+      throw new Error('Test not found');
+    }
+
+    if (test.createdById !== operator.id) {
+      throw new Error('You do not have permission to publish this test');
+    }
+
+    if (test.status === 'PUBLISHED') {
+      throw new Error('Test is already published');
+    }
+
+    if (test.questions.length === 0) {
+      throw new Error('Cannot publish a test without questions');
+    }
+
+    const publishedTest = await prisma.masterTest.update({
+      where: { id: testId },
+      data: { status: 'PUBLISHED' },
+    });
+
+    return publishedTest;
   },
 };
