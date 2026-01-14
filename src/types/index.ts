@@ -1,8 +1,14 @@
 import { Request } from 'express';
 import { Role } from '@prisma/client';
+import { ParamsDictionary } from 'express-serve-static-core';
+
+// Override params to always be string (not string | string[])
+interface StringParams extends ParamsDictionary {
+  [key: string]: string;
+}
 
 // Extend Express Request to include user data from JWT
-export interface AuthRequest extends Request {
+export interface AuthRequest extends Request<StringParams> {
   user?: {
     id: string;
     userId: string;
