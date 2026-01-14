@@ -2,6 +2,33 @@ import prisma from '../utils/prisma';
 import { hashPassword } from '../utils/password';
 import { Role } from '@prisma/client';
 
+const TOP_RANK_THRESHOLD = 10;
+
+const computeRankInsights = (attempts: Array<{ rank: number | null | undefined }>, totalAttempts?: number) => {
+  const attemptsWithRank = attempts.filter(a => typeof a.rank === 'number') as Array<{ rank: number }>;
+  if (attemptsWithRank.length === 0) {
+    return {
+      averageRank: null as number | null,
+      bestRank: null as number | null,
+      topRankCount: 0,
+      topRankRate: 0,
+    };
+  }
+
+  const averageRank = attemptsWithRank.reduce((sum, a) => sum + a.rank, 0) / attemptsWithRank.length;
+  const bestRank = Math.min(...attemptsWithRank.map(a => a.rank));
+  const topRankCount = attemptsWithRank.filter(a => a.rank <= TOP_RANK_THRESHOLD).length;
+  const denominator = typeof totalAttempts === 'number' ? totalAttempts : attempts.length;
+  const topRankRate = denominator > 0 ? (topRankCount / denominator) * 100 : 0;
+
+  return {
+    averageRank,
+    bestRank,
+    topRankCount,
+    topRankRate,
+  };
+};
+
 export const instituteService = {
   // Get institute dashboard overview
   getDashboard: async (userId: string) => {
@@ -649,13 +676,7 @@ export const instituteService = {
       ? Math.min(...percentages)
       : 0;
 
-    const passedCount = activation.attempts.filter(a =>
-      (a.obtainedMarks || 0) >= activation.masterTest.passingMarks
-    ).length;
-
-    const passPercentage = percentages.length > 0
-      ? (passedCount / percentages.length) * 100
-      : 0;
+    const rankInsights = computeRankInsights(activation.attempts, activation.attempts.length);
 
     return {
       id: activation.id,
@@ -675,7 +696,10 @@ export const instituteService = {
       averageScore: avgScore,
       highestScore: highestScore,
       lowestScore: lowestScore,
-      passPercentage: passPercentage,
+      averageRank: rankInsights.averageRank,
+      bestRank: rankInsights.bestRank,
+      topRankRate: rankInsights.topRankRate,
+      topRankFinishes: rankInsights.topRankCount,
       attempts: activation.attempts.map(attempt => ({
         id: attempt.id,
         studentName: `${attempt.student.firstName} ${attempt.student.lastName}`,
@@ -812,6 +836,7 @@ export const instituteService = {
               select: {
                 subject: true,
                 difficulty: true,
+                nature: true,
                 questionType: true,
                 marks: true,
               },
@@ -829,10 +854,8 @@ export const instituteService = {
       ? percentages.reduce((sum, p) => sum + p, 0) / percentages.length
       : 0;
 
-    const passedAttempts = attempts.filter(a =>
-      (a.obtainedMarks || 0) >= (a.testActivation.masterTest.passingMarks || 0)
-    ).length;
-    const passRate = totalAttempts > 0 ? (passedAttempts / totalAttempts) * 100 : 0;
+    const rankInsights = computeRankInsights(attempts, totalAttempts);
+    const { averageRank, bestRank, topRankCount, topRankRate } = rankInsights;
 
     // Subject-wise Performance
     const subjectStats: Record<string, { totalQuestions: number; correctAnswers: number; totalMarks: number; obtainedMarks: number }> = {};
@@ -856,7 +879,6 @@ export const instituteService = {
       subject,
       totalAttempts: stats.totalQuestions,
       averageScore: stats.totalMarks > 0 ? (stats.obtainedMarks / stats.totalMarks) * 100 : 0,
-      passRate: stats.totalQuestions > 0 ? (stats.correctAnswers / stats.totalQuestions) * 100 : 0,
       accuracy: stats.totalQuestions > 0 ? (stats.correctAnswers / stats.totalQuestions) * 100 : 0,
     }));
 
@@ -911,6 +933,64 @@ export const instituteService = {
       averageScore: stats.totalMarks > 0 ? (stats.obtainedMarks / stats.totalMarks) * 100 : 0,
       accuracy: stats.totalQuestions > 0 ? (stats.correctAnswers / stats.totalQuestions) * 100 : 0,
     }));
+
+    // Nature-wise Performance (Conceptual, Formula-Based, Calculation-Based)
+    const natureStats: Record<string, { totalQuestions: number; correctAnswers: number; totalMarks: number; obtainedMarks: number }> = {};
+
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const nature = answer.question.nature || 'CONCEPTUAL';
+        if (!natureStats[nature]) {
+          natureStats[nature] = { totalQuestions: 0, correctAnswers: 0, totalMarks: 0, obtainedMarks: 0 };
+        }
+        natureStats[nature].totalQuestions++;
+        natureStats[nature].totalMarks += answer.question.marks;
+        natureStats[nature].obtainedMarks += answer.marksObtained || 0;
+        if (answer.isCorrect) {
+          natureStats[nature].correctAnswers++;
+        }
+      }
+    }
+
+    const natureWisePerformance = Object.entries(natureStats).map(([nature, stats]) => ({
+      nature,
+      totalQuestions: stats.totalQuestions,
+      correctAnswers: stats.correctAnswers,
+      averageScore: stats.totalMarks > 0 ? (stats.obtainedMarks / stats.totalMarks) * 100 : 0,
+      accuracy: stats.totalQuestions > 0 ? (stats.correctAnswers / stats.totalQuestions) * 100 : 0,
+    }));
+
+    // Combined Performance (Nature × Difficulty - 9 combinations)
+    const combinedStats: Record<string, { totalQuestions: number; correctAnswers: number; totalMarks: number; obtainedMarks: number }> = {};
+
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const nature = answer.question.nature || 'CONCEPTUAL';
+        const difficulty = answer.question.difficulty;
+        const key = `${nature}_${difficulty}`;
+        if (!combinedStats[key]) {
+          combinedStats[key] = { totalQuestions: 0, correctAnswers: 0, totalMarks: 0, obtainedMarks: 0 };
+        }
+        combinedStats[key].totalQuestions++;
+        combinedStats[key].totalMarks += answer.question.marks;
+        combinedStats[key].obtainedMarks += answer.marksObtained || 0;
+        if (answer.isCorrect) {
+          combinedStats[key].correctAnswers++;
+        }
+      }
+    }
+
+    const combinedPerformance = Object.entries(combinedStats).map(([key, stats]) => {
+      const [nature, difficulty] = key.split('_');
+      return {
+        nature,
+        difficulty,
+        totalQuestions: stats.totalQuestions,
+        correctAnswers: stats.correctAnswers,
+        averageScore: stats.totalMarks > 0 ? (stats.obtainedMarks / stats.totalMarks) * 100 : 0,
+        accuracy: stats.totalQuestions > 0 ? (stats.correctAnswers / stats.totalQuestions) * 100 : 0,
+      };
+    });
 
     // Test Type Performance
     const testTypeStats: Record<string, { activations: Set<string>; attempts: number; totalPercentage: number }> = {};
@@ -1018,11 +1098,16 @@ export const instituteService = {
         totalTestsActivated,
         totalAttempts,
         averageScore,
-        passRate,
+        averageRank,
+        bestRank,
+        topRankRate,
+        topRankFinishes: topRankCount,
         avgTimeSpent,
       },
       subjectWisePerformance,
       difficultyWisePerformance,
+      natureWisePerformance,
+      combinedPerformance,
       questionTypePerformance,
       testTypePerformance,
       topPerformers,
@@ -1132,6 +1217,7 @@ export const instituteService = {
               select: {
                 subject: true,
                 difficulty: true,
+                nature: true,
                 questionType: true,
                 marks: true,
               },
@@ -1151,10 +1237,13 @@ export const instituteService = {
     const highestScore = percentages.length > 0 ? Math.max(...percentages) : 0;
     const lowestScore = percentages.length > 0 ? Math.min(...percentages) : 0;
 
-    const passedTests = attempts.filter(a =>
-      (a.obtainedMarks || 0) >= (a.testActivation.masterTest.passingMarks || 0)
-    ).length;
-    const passRate = totalTests > 0 ? (passedTests / totalTests) * 100 : 0;
+    const studentRankInsights = computeRankInsights(attempts, totalTests);
+    const {
+      averageRank: studentAverageRank,
+      bestRank: studentBestRank,
+      topRankCount: studentTopRanks,
+      topRankRate: studentTopRankRate,
+    } = studentRankInsights;
 
     // Subject-wise breakdown
     const subjectStats: Record<string, { total: number; correct: number; totalMarks: number; obtained: number }> = {};
@@ -1205,6 +1294,59 @@ export const instituteService = {
       accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
     }));
 
+
+    // Nature-wise breakdown
+    const natureStats: Record<string, { total: number; correct: number }> = {};
+
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const nature = answer.question.nature || 'CONCEPTUAL';
+        if (!natureStats[nature]) {
+          natureStats[nature] = { total: 0, correct: 0 };
+        }
+        natureStats[nature].total++;
+        if (answer.isCorrect) {
+          natureStats[nature].correct++;
+        }
+      }
+    }
+
+    const natureWisePerformance = Object.entries(natureStats).map(([nature, stats]) => ({
+      nature,
+      totalQuestions: stats.total,
+      correctAnswers: stats.correct,
+      accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
+    }));
+
+    // Combined Performance (Nature x Difficulty)
+    const combinedStats: Record<string, { total: number; correct: number }> = {};
+
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const nature = answer.question.nature || 'CONCEPTUAL';
+        const difficulty = answer.question.difficulty;
+        const key = `${nature}_${difficulty}`;
+        if (!combinedStats[key]) {
+          combinedStats[key] = { total: 0, correct: 0 };
+        }
+        combinedStats[key].total++;
+        if (answer.isCorrect) {
+          combinedStats[key].correct++;
+        }
+      }
+    }
+
+    const combinedPerformance = Object.entries(combinedStats).map(([key, stats]) => {
+      const [nature, difficulty] = key.split('_');
+      return {
+        nature,
+        difficulty,
+        totalQuestions: stats.total,
+        correctAnswers: stats.correct,
+        accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
+      };
+    });
+
     // Test history
     const testHistory = attempts.map(attempt => ({
       id: attempt.id,
@@ -1213,7 +1355,6 @@ export const instituteService = {
       totalMarks: attempt.testActivation.masterTest.totalMarks,
       obtainedMarks: attempt.obtainedMarks || 0,
       percentage: attempt.percentage || 0,
-      isPassed: (attempt.obtainedMarks || 0) >= (attempt.testActivation.masterTest.passingMarks || 0),
       rank: attempt.rank,
       timeSpent: attempt.timeSpent,
       submittedAt: attempt.submittedAt?.toISOString() || '',
@@ -1244,12 +1385,16 @@ export const instituteService = {
         averageScore,
         highestScore,
         lowestScore,
-        passRate,
-        passedTests,
+        averageRank: studentAverageRank,
+        bestRank: studentBestRank,
+        topRankRate: studentTopRankRate,
+        topRankFinishes: studentTopRanks,
         totalTimeSpent: attempts.reduce((sum, a) => sum + (a.timeSpent || 0), 0),
       },
       subjectWisePerformance,
       difficultyWisePerformance,
+      natureWisePerformance,
+      combinedPerformance,
       testHistory,
       progressTrend,
       insights: {
@@ -1284,6 +1429,7 @@ export const instituteService = {
                 id: true,
                 subject: true,
                 difficulty: true,
+                nature: true,
                 questionType: true,
                 marks: true,
               },
@@ -1317,6 +1463,7 @@ export const instituteService = {
                 id: true,
                 subject: true,
                 difficulty: true,
+                nature: true,
                 questionType: true,
               },
             },
@@ -1340,10 +1487,13 @@ export const instituteService = {
     const highestScore = percentages.length > 0 ? Math.max(...percentages) : 0;
     const lowestScore = percentages.length > 0 ? Math.min(...percentages) : 0;
 
-    const passedAttempts = attempts.filter(a =>
-      (a.obtainedMarks || 0) >= (activation.masterTest.passingMarks || 0)
-    ).length;
-    const passRate = totalAttempts > 0 ? (passedAttempts / totalAttempts) * 100 : 0;
+    const activationRankInsights = computeRankInsights(attempts, totalAttempts);
+    const {
+      averageRank: activationAverageRank,
+      bestRank: activationBestRank,
+      topRankCount: activationTopRanks,
+      topRankRate: activationTopRankRate,
+    } = activationRankInsights;
 
     // Question-wise analysis
     const questionStats: Record<string, { total: number; correct: number; avgTime: number; timeCount: number }> = {};
@@ -1411,6 +1561,58 @@ export const instituteService = {
       accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
     }));
 
+    // Nature breakdown
+    const natureStats: Record<string, { total: number; correct: number }> = {};
+
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const nature = answer.question.nature || 'CONCEPTUAL';
+        if (!natureStats[nature]) {
+          natureStats[nature] = { total: 0, correct: 0 };
+        }
+        natureStats[nature].total++;
+        if (answer.isCorrect) {
+          natureStats[nature].correct++;
+        }
+      }
+    }
+
+    const naturePerformance = Object.entries(natureStats).map(([nature, stats]) => ({
+      nature,
+      totalAttempts: stats.total,
+      correctAnswers: stats.correct,
+      accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
+    }));
+
+    // Combined Performance (Nature x Difficulty)
+    const combinedStatsTest: Record<string, { total: number; correct: number }> = {};
+
+    for (const attempt of attempts) {
+      for (const answer of attempt.answers) {
+        const nature = answer.question.nature || 'CONCEPTUAL';
+        const difficulty = answer.question.difficulty;
+        const key = `${nature}_${difficulty}`;
+        if (!combinedStatsTest[key]) {
+          combinedStatsTest[key] = { total: 0, correct: 0 };
+        }
+        combinedStatsTest[key].total++;
+        if (answer.isCorrect) {
+          combinedStatsTest[key].correct++;
+        }
+      }
+    }
+
+    const testCombinedPerformance = Object.entries(combinedStatsTest).map(([key, stats]) => {
+      const [nature, difficulty] = key.split('_');
+      return {
+        nature,
+        difficulty,
+        totalAttempts: stats.total,
+        correctAnswers: stats.correct,
+        accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0,
+      };
+    });
+
     // Score distribution
     const scoreDistribution = [
       { range: '0-20%', count: attempts.filter(a => (a.percentage || 0) >= 0 && (a.percentage || 0) < 20).length },
@@ -1461,11 +1663,15 @@ export const instituteService = {
         averageScore,
         highestScore,
         lowestScore,
-        passRate,
-        passedCount: passedAttempts,
+        averageRank: activationAverageRank,
+        bestRank: activationBestRank,
+        topRankRate: activationTopRankRate,
+        topRankFinishes: activationTopRanks,
       },
       subjectPerformance,
       difficultyPerformance,
+      naturePerformance,
+      testCombinedPerformance,
       scoreDistribution,
       topPerformers,
       questionAnalysis: questionAnalysis.slice(0, 10), // Top 10 hardest questions

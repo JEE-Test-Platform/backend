@@ -266,7 +266,6 @@ export const studentService = {
       obtainedMarks: attempt.obtainedMarks,
       totalMarks: attempt.totalMarks,
       percentage: attempt.percentage,
-      isPassed: attempt.isPassed,
       rank: attempt.rank,
     }));
   },
@@ -667,7 +666,6 @@ export const studentService = {
 
     const totalMarks = attempt.testActivation.masterTest.totalMarks;
     const percentage = (obtainedMarks / totalMarks) * 100;
-    const isPassed = obtainedMarks >= attempt.testActivation.masterTest.passingMarks;
     const timeSpent = Math.floor((new Date().getTime() - attempt.startedAt.getTime()) / 1000 / 60); // in minutes
 
     // Update attempt
@@ -678,7 +676,6 @@ export const studentService = {
         submittedAt: new Date(),
         obtainedMarks,
         percentage,
-        isPassed,
         timeSpent,
       },
     });
@@ -771,7 +768,18 @@ export const studentService = {
     // Calculate subject-wise performance
     const subjectPerformance: any = {};
     const difficultyPerformance: any = {};
+    const naturePerformance: any = {};
     const behavioralPatterns: any = {};
+
+    // Combined stats (Nature × Difficulty = 9 metrics)
+    const combinedStats: Record<string, { correct: number; total: number }> = {};
+    const natures = ['CONCEPTUAL', 'FORMULA_BASED', 'APPLICATION_BASED'];
+    const difficulties = ['EASY', 'MEDIUM', 'HARD'];
+    natures.forEach(n => {
+      difficulties.forEach(d => {
+        combinedStats[`${n}|${d}`] = { correct: 0, total: 0 };
+      });
+    });
 
     for (const question of attempt.testActivation.masterTest.questions) {
       const answer = attempt.answers.find(a => a.questionId === question.id);
@@ -783,6 +791,10 @@ export const studentService = {
       }
       if (!difficultyPerformance[difficulty]) {
         difficultyPerformance[difficulty] = { correct: 0, total: 0, totalTime: 0 };
+      }
+      const nature = (question as any).nature || 'CONCEPTUAL';
+      if (!naturePerformance[nature]) {
+        naturePerformance[nature] = { correct: 0, total: 0, totalTime: 0 };
       }
       if (!behavioralPatterns[subject]) {
         behavioralPatterns[subject] = {
@@ -797,16 +809,30 @@ export const studentService = {
       subjectPerformance[subject].total++;
       subjectPerformance[subject].totalMarks += question.marks;
       difficultyPerformance[difficulty].total++;
+      naturePerformance[nature].total++;
+
+      // Update combined stats
+      const combinedKey = `${nature}|${difficulty}`;
+      if (combinedStats[combinedKey]) {
+        combinedStats[combinedKey].total++;
+      }
 
       if (answer) {
         const timeSpent = answer.timeSpent || 0;
         subjectPerformance[subject].totalTime += timeSpent;
         difficultyPerformance[difficulty].totalTime += timeSpent;
+        naturePerformance[nature].totalTime += timeSpent;
 
         if (answer.isCorrect) {
           subjectPerformance[subject].correct++;
           subjectPerformance[subject].marks += answer.marksObtained || 0;
           difficultyPerformance[difficulty].correct++;
+          naturePerformance[nature].correct++;
+
+          // Update combined stats
+          if (combinedStats[combinedKey]) {
+            combinedStats[combinedKey].correct++;
+          }
 
           // Behavioral logic - Correct
           if (difficulty === 'EASY' && timeSpent < 60) {
@@ -829,6 +855,18 @@ export const studentService = {
       }
     }
 
+    // Transform combined stats into array format
+    const combinedPerformance = Object.entries(combinedStats).map(([key, stats]) => {
+      const [nature, difficulty] = key.split('|');
+      return {
+        nature,
+        difficulty,
+        correct: stats.correct,
+        total: stats.total,
+        percentage: stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0,
+      };
+    });
+
     return {
       attempt: {
         id: attempt.id,
@@ -840,7 +878,6 @@ export const studentService = {
         obtainedMarks: attempt.obtainedMarks,
         totalMarks: attempt.totalMarks,
         percentage: attempt.percentage,
-        isPassed: attempt.isPassed,
         rank: attempt.rank,
         status: attempt.status,
         aiAnalysisReport: attempt.aiAnalysisReport,
@@ -857,6 +894,8 @@ export const studentService = {
       answers: attempt.answers,
       subjectPerformance,
       difficultyPerformance,
+      naturePerformance,
+      combinedPerformance,
       behavioralPatterns,
     };
   },
@@ -902,7 +941,6 @@ export const studentService = {
       totalMarks: attempt.totalMarks,
       percentage: attempt.percentage,
       rank: attempt.rank,
-      isPassed: attempt.isPassed,
     }));
   },
 
@@ -1023,6 +1061,101 @@ export const studentService = {
     });
 
     return subjectStats;
+  },
+
+  // Get nature-wise and combined (nature × difficulty) performance
+  getNatureWisePerformance: async (userId: string) => {
+    const student = await prisma.student.findUnique({
+      where: { userId },
+    });
+
+    if (!student) {
+      throw new Error('Student not found');
+    }
+
+    const attempts = await prisma.testAttempt.findMany({
+      where: {
+        studentId: student.id,
+        status: 'SUBMITTED',
+      },
+      include: {
+        answers: {
+          include: {
+            question: true,
+          },
+        },
+      },
+    });
+
+    // Nature-wise stats
+    const natureStats: Record<string, { correct: number; total: number; percentage: number }> = {
+      CONCEPTUAL: { correct: 0, total: 0, percentage: 0 },
+      FORMULA_BASED: { correct: 0, total: 0, percentage: 0 },
+      APPLICATION_BASED: { correct: 0, total: 0, percentage: 0 },
+    };
+
+    // Combined stats (Nature × Difficulty = 9 metrics)
+    const combinedStats: Record<string, { correct: number; total: number; percentage: number }> = {};
+    const natures = ['CONCEPTUAL', 'FORMULA_BASED', 'APPLICATION_BASED'];
+    const difficulties = ['EASY', 'MEDIUM', 'HARD'];
+
+    // Initialize all 9 combinations
+    natures.forEach(nature => {
+      difficulties.forEach(difficulty => {
+        combinedStats[`${nature}|${difficulty}`] = { correct: 0, total: 0, percentage: 0 };
+      });
+    });
+
+    attempts.forEach(attempt => {
+      attempt.answers.forEach(answer => {
+        const question = answer.question;
+        const nature = (question as any).nature || 'CONCEPTUAL';
+        const difficulty = question.difficulty;
+
+        // Update nature stats
+        if (natureStats[nature]) {
+          natureStats[nature].total++;
+          if (answer.isCorrect) {
+            natureStats[nature].correct++;
+          }
+        }
+
+        // Update combined stats
+        const combinedKey = `${nature}|${difficulty}`;
+        if (combinedStats[combinedKey]) {
+          combinedStats[combinedKey].total++;
+          if (answer.isCorrect) {
+            combinedStats[combinedKey].correct++;
+          }
+        }
+      });
+    });
+
+    // Calculate percentages
+    Object.keys(natureStats).forEach(nature => {
+      const stats = natureStats[nature];
+      stats.percentage = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+    });
+
+    Object.keys(combinedStats).forEach(key => {
+      const stats = combinedStats[key];
+      stats.percentage = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+    });
+
+    // Transform combined stats into array format for frontend
+    const combinedPerformance = Object.entries(combinedStats).map(([key, stats]) => {
+      const [nature, difficulty] = key.split('|');
+      return {
+        nature,
+        difficulty,
+        ...stats,
+      };
+    });
+
+    return {
+      natureWise: natureStats,
+      combined: combinedPerformance,
+    };
   },
 
   // Get detailed analytics for a specific test attempt
@@ -1156,7 +1289,6 @@ export const studentService = {
       totalMarks: attempt.totalMarks,
       obtainedMarks: attempt.obtainedMarks,
       percentage: attempt.percentage,
-      isPassed: attempt.isPassed,
       rank: attempt.rank,
       status: attempt.status,
       startedAt: attempt.startedAt,
@@ -1164,7 +1296,6 @@ export const studentService = {
       timeSpent: attempt.timeSpent,
       testTitle: attempt.testActivation.masterTest.title,
       testType: attempt.testActivation.masterTest.testType,
-      passingMarks: attempt.testActivation.masterTest.passingMarks,
       duration: attempt.testActivation.masterTest.duration,
       aiAnalysisReport: attempt.aiAnalysisReport,
       analysisStatus: attempt.analysisStatus,

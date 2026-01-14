@@ -179,6 +179,18 @@ export const studentController = {
     }
   },
 
+  // Get nature-wise and combined (nature × difficulty) performance
+  getNatureWisePerformance: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const performance = await studentService.getNatureWisePerformance(userId);
+      res.json({ success: true, data: performance });
+    } catch (error) {
+      console.error('Error fetching nature-wise performance:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch nature-wise performance' });
+    }
+  },
+
   // Get detailed analytics for a specific test attempt
   getDetailedAttemptAnalytics: async (req: AuthRequest, res: Response) => {
     try {

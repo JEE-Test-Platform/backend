@@ -176,6 +176,7 @@ model Question {
   questionType    QuestionType
   subject         Subject
   difficulty      Difficulty
+  nature          QuestionNature   @default(CONCEPTUAL)  // Question classification: conceptual, formula-based, or calculation-based
   marks           Int
   correctAnswer   String?          // For numerical/true-false questions (null for MCQ)
   explanation     String?
@@ -309,6 +310,12 @@ enum Difficulty {
   EASY
   MEDIUM
   HARD
+}
+
+enum QuestionNature {
+  CONCEPTUAL          // Understanding/theory-based questions
+  FORMULA_BASED       // Questions requiring formula memorization and application
+  APPLICATION_BASED   // Real-world application and problem-solving questions
 }
 
 enum AttemptStatus {

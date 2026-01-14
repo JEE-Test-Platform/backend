@@ -1,6 +1,6 @@
 import prisma from '../utils/prisma';
 import Papa from 'papaparse';
-import { QuestionType, Subject, Difficulty, TestType } from '@prisma/client';
+import { QuestionType, Subject, Difficulty, TestType, QuestionNature } from '@prisma/client';
 
 interface CSVQuestion {
   questionOrder: string;
@@ -8,6 +8,7 @@ interface CSVQuestion {
   questionType: string;
   subject: string;
   difficulty: string;
+  nature?: string;  // Question nature: CONCEPTUAL, FORMULA_BASED, APPLICATION_BASED
   marks: string;
   correctAnswer?: string;
   explanation?: string;
@@ -228,6 +229,12 @@ export const operatorService = {
               errors.push(`Row ${rowNum}: difficulty must be EASY, MEDIUM, or HARD`);
             }
 
+            // Validate nature (optional, defaults to CONCEPTUAL)
+            const validNatures = ['CONCEPTUAL', 'FORMULA_BASED', 'APPLICATION_BASED'];
+            if (row.nature && !validNatures.includes(row.nature)) {
+              errors.push(`Row ${rowNum}: nature must be CONCEPTUAL, FORMULA_BASED, or APPLICATION_BASED`);
+            }
+
             // Validate marks
             if (row.marks && (isNaN(Number(row.marks)) || Number(row.marks) <= 0)) {
               errors.push(`Row ${rowNum}: marks must be a positive number`);
@@ -348,6 +355,7 @@ export const operatorService = {
             questionType: csvQ.questionType as QuestionType,
             subject: csvQ.subject as Subject,
             difficulty: csvQ.difficulty as Difficulty,
+            nature: (csvQ.nature as QuestionNature) || 'CONCEPTUAL',
             marks: parseInt(csvQ.marks),
             correctAnswer: csvQ.correctAnswer || null,
             explanation: csvQ.explanation || null,
@@ -650,6 +658,7 @@ export const operatorService = {
             questionType: q.questionType as QuestionType,
             subject: q.subject as Subject,
             difficulty: q.difficulty as Difficulty,
+            nature: (q.nature as QuestionNature) || 'CONCEPTUAL',
             correctAnswer: q.correctAnswer,
             marks: q.marks,
             questionOrder: q.orderIndex || index + 1,
@@ -831,6 +840,7 @@ export const operatorService = {
           questionType: questionData.questionType as QuestionType,
           subject: questionData.subject as Subject,
           difficulty: questionData.difficulty as Difficulty,
+          nature: (questionData.nature as QuestionNature) || 'CONCEPTUAL',
           correctAnswer: questionData.correctAnswer,
           marks: questionData.marks,
           questionOrder: questionData.orderIndex || questionOrder,
@@ -939,6 +949,7 @@ export const operatorService = {
           questionType: questionData.questionType as QuestionType,
           subject: questionData.subject as Subject,
           difficulty: questionData.difficulty as Difficulty,
+          nature: (questionData.nature as QuestionNature) || 'CONCEPTUAL',
           correctAnswer: questionData.correctAnswer,
           marks: questionData.marks,
           explanation: questionData.explanation,

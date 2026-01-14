@@ -79,14 +79,12 @@ Use the "Behavioral Patterns" data to diagnose the student's exam temperament:
 - Test Title: ${test.title}
 - Test Type: ${test.testType}
 - Total Marks: ${test.totalMarks}
-- Passing Marks: ${test.passingMarks}
 
 ## Student Outcome
 - Marks Obtained: ${attempt.obtainedMarks}
 - Percentage: ${attempt.percentage?.toFixed(2)}%
 - Rank: ${attempt.rank}
-- Time Spent: ${attempt.timeSpent} minutes
-- Result: ${attempt.isPassed ? 'PASSED' : 'FAILED'}
+-- Time Spent: ${attempt.timeSpent} minutes
 
 ## Behavioral Patterns (Raw Data)
 ${behaviorSummary}
@@ -104,7 +102,7 @@ ${difficultySummary}
 ### Overall Performance Summary
 - Classify performance as: STRONG / AVERAGE / WEAK
 - Justify this classification in **1–2 sentences**
-- Mention pass/fail and rank context
+- Mention rank context
 
 ---
 

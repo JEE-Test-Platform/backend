@@ -48,6 +48,9 @@ router.get('/analytics/performance', studentController.getPerformanceAnalytics);
 // Analytics - Get subject-wise performance
 router.get('/analytics/subject-wise', studentController.getSubjectWisePerformance);
 
+// Analytics - Get nature-wise and combined (nature × difficulty) performance
+router.get('/analytics/nature-wise', studentController.getNatureWisePerformance);
+
 // Analytics - Get detailed analytics for a specific test attempt
 router.get('/analytics/attempt/:attemptId', studentController.getDetailedAttemptAnalytics);
 
