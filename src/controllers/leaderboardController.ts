@@ -1,12 +1,13 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { leaderboardService } from '../services/leaderboardService';
+import { AuthRequest } from '../types';
 
 export const leaderboardController = {
   /**
    * Get leaderboard for a specific test activation
    * Accessible by: STUDENT, INSTITUTE
    */
-  getTestLeaderboard: async (req: Request, res: Response) => {
+  getTestLeaderboard: async (req: AuthRequest, res: Response) => {
     try {
       const { testActivationId } = req.params;
       const user = (req as any).user;
@@ -60,7 +61,7 @@ export const leaderboardController = {
    * Get student's rank for a specific test
    * Accessible by: STUDENT
    */
-  getMyRank: async (req: Request, res: Response) => {
+  getMyRank: async (req: AuthRequest, res: Response) => {
     try {
       const { testActivationId } = req.params;
       const user = (req as any).user;
@@ -85,8 +86,8 @@ export const leaderboardController = {
       );
 
       if (!rankInfo) {
-        return res.status(404).json({ 
-          error: 'No submitted attempt found for this test' 
+        return res.status(404).json({
+          error: 'No submitted attempt found for this test'
         });
       }
 
@@ -101,7 +102,7 @@ export const leaderboardController = {
    * Get top performers for the institute
    * Accessible by: INSTITUTE
    */
-  getTopPerformers: async (req: Request, res: Response) => {
+  getTopPerformers: async (req: AuthRequest, res: Response) => {
     try {
       const user = (req as any).user;
       const limit = parseInt(req.query.limit as string) || 10;
@@ -135,7 +136,7 @@ export const leaderboardController = {
    * Get leaderboard overview for institute
    * Accessible by: INSTITUTE
    */
-  getLeaderboardOverview: async (req: Request, res: Response) => {
+  getLeaderboardOverview: async (req: AuthRequest, res: Response) => {
     try {
       const user = (req as any).user;
 
@@ -167,7 +168,7 @@ export const leaderboardController = {
    * Get student's rank in a specific test (for institute to view)
    * Accessible by: INSTITUTE
    */
-  getStudentRankForInstitute: async (req: Request, res: Response) => {
+  getStudentRankForInstitute: async (req: AuthRequest, res: Response) => {
     try {
       const { studentId, testActivationId } = req.params;
       const user = (req as any).user;
@@ -177,8 +178,8 @@ export const leaderboardController = {
       }
 
       if (!studentId || !testActivationId) {
-        return res.status(400).json({ 
-          error: 'Student ID and Test activation ID are required' 
+        return res.status(400).json({
+          error: 'Student ID and Test activation ID are required'
         });
       }
 
@@ -200,8 +201,8 @@ export const leaderboardController = {
       });
 
       if (!student) {
-        return res.status(404).json({ 
-          error: 'Student not found or does not belong to this institute' 
+        return res.status(404).json({
+          error: 'Student not found or does not belong to this institute'
         });
       }
 
@@ -211,8 +212,8 @@ export const leaderboardController = {
       );
 
       if (!rankInfo) {
-        return res.status(404).json({ 
-          error: 'No submitted attempt found for this test' 
+        return res.status(404).json({
+          error: 'No submitted attempt found for this test'
         });
       }
 
