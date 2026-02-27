@@ -7,6 +7,7 @@ import instituteRoutes from './routes/instituteRoutes';
 import operatorRoutes from './routes/operatorRoutes';
 import leaderboardRoutes from './routes/leaderboardRoutes';
 import superadminRoutes from './routes/superadminRoutes';
+import teacherRoutes from './routes/teacherRoutes';
 import blobStorageService from './services/blobStorageService';
 import './workers/reportWorker'; // Initialize BullMQ worker
 
@@ -46,6 +47,7 @@ app.use('/api/institute', instituteRoutes);
 app.use('/api/operator', operatorRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/superadmin', superadminRoutes);
+app.use('/api/teacher', teacherRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

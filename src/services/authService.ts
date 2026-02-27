@@ -249,6 +249,7 @@ export class AuthService {
         institute: true,
         operator: true,
         superAdmin: true,
+        teacher: true,
       },
     });
 
@@ -287,6 +288,10 @@ export class AuthService {
         profile = user.superAdmin;
         profileId = user.superAdmin?.id;
         break;
+      case Role.TEACHER:
+        profile = user.teacher;
+        profileId = user.teacher?.id;
+        break;
     }
 
     const token = generateToken({
@@ -316,6 +321,7 @@ export class AuthService {
         institute: true,
         operator: true,
         superAdmin: true,
+        teacher: true,
       },
     });
 

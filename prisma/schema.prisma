@@ -25,6 +25,7 @@ model User {
   institute   Institute?
   operator    Operator?
   superAdmin  SuperAdmin?
+  teacher     Teacher?
 
   @@map("users")
 }
@@ -118,6 +119,20 @@ model SuperAdmin {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("super_admins")
+}
+
+model Teacher {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  firstName String
+  lastName  String
+  subject   Subject  // The subject this teacher is expert in
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("teachers")
 }
 
 // Master Test created by Operator - reusable across institutes
@@ -281,6 +296,7 @@ enum Role {
   INSTITUTE
   OPERATOR
   SUPER_ADMIN
+  TEACHER
 }
 
 enum Gender {
