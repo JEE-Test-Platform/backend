@@ -48,7 +48,7 @@ export const reportWorker = new Worker(
         }
     },
     {
-        connection,
+        connection: connection as any,
         concurrency: 5, // Process up to 5 reports at a time
     }
 );

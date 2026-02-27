@@ -20,7 +20,7 @@ export const connection = new IORedis(redisUrl, {
 });
 
 export const reportQueue = new Queue('ai-report-queue', {
-    connection,
+    connection: connection as any,
     defaultJobOptions: {
         attempts: 3,
         backoff: {
