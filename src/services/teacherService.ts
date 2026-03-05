@@ -112,11 +112,11 @@ export class TeacherService {
     };
   }
 
-  // Update difficulty and/or nature label on a single question
+  // Update difficulty, nature, topic and/or subtopic label on a single question
   async updateQuestionLabel(
     questionId: string,
     teacherId: string,
-    data: { difficulty?: Difficulty; nature?: QuestionNature }
+    data: { difficulty?: Difficulty; nature?: QuestionNature; topic?: string; subtopic?: string }
   ) {
     const subject = await this.getTeacherSubject(teacherId);
 
@@ -136,11 +136,15 @@ export class TeacherService {
       data: {
         ...(data.difficulty !== undefined && { difficulty: data.difficulty }),
         ...(data.nature !== undefined && { nature: data.nature }),
+        ...(data.topic !== undefined && { topic: data.topic || null }),
+        ...(data.subtopic !== undefined && { subtopic: data.subtopic || null }),
       },
       select: {
         id: true,
         difficulty: true,
         nature: true,
+        topic: true,
+        subtopic: true,
         subject: true,
         questionText: true,
         questionOrder: true,
@@ -153,13 +157,15 @@ export class TeacherService {
   // Bulk update labels for multiple questions in one request
   async bulkUpdateLabels(
     teacherId: string,
-    updates: { questionId: string; difficulty?: Difficulty; nature?: QuestionNature }[]
+    updates: { questionId: string; difficulty?: Difficulty; nature?: QuestionNature; topic?: string; subtopic?: string }[]
   ) {
     const results = await Promise.all(
       updates.map((u) =>
         this.updateQuestionLabel(u.questionId, teacherId, {
           difficulty: u.difficulty,
           nature: u.nature,
+          topic: u.topic,
+          subtopic: u.subtopic,
         })
       )
     );

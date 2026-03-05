@@ -200,6 +200,10 @@ model Question {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
+  // Topic and subtopic labels (optional, for categorization)
+  topic           String?          // e.g., "Structure of Atom"
+  subtopic        String?          // e.g., "Bohr's models (including limitations)."
+
   // For MCQ_MULTIPLE: Enable partial marking
   partialMarking  Boolean          @default(false)
 

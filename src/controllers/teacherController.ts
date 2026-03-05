@@ -35,12 +35,12 @@ export class TeacherController {
     try {
       const { questionId } = req.params;
       const teacherId = req.user!.profileId!;
-      const { difficulty, nature } = req.body;
+      const { difficulty, nature, topic, subtopic } = req.body;
 
-      if (!difficulty && !nature) {
+      if (!difficulty && !nature && topic === undefined && subtopic === undefined) {
         return res.status(400).json({
           success: false,
-          message: 'Provide at least one of: difficulty, nature',
+          message: 'Provide at least one of: difficulty, nature, topic, subtopic',
         });
       }
 
@@ -61,6 +61,8 @@ export class TeacherController {
       const updated = await teacherService.updateQuestionLabel(questionId, teacherId, {
         difficulty,
         nature,
+        topic,
+        subtopic,
       });
 
       return res.json({ success: true, data: updated });
