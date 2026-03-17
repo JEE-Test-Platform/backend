@@ -1,4 +1,6 @@
 import prisma from '../utils/prisma';
+import { testExpiryQueue } from '../lib/queue';
+import { clearTimerInterval } from '../socket/timerSocket';
 
 export const studentService = {
   // Get student dashboard overview
@@ -108,7 +110,7 @@ export const studentService = {
 
     const now = new Date();
 
-    const activations = await prisma.instituteTestActivation.findMany({
+    const allActivations = await prisma.instituteTestActivation.findMany({
       where: {
         instituteId: student.instituteId,
         isActive: true,
@@ -154,6 +156,9 @@ export const studentService = {
       },
       orderBy: { activationDate: 'desc' },
     });
+
+    // If startTime is set, only show the test once that time has been reached
+    const activations = allActivations.filter(a => !a.startTime || a.startTime <= now);
 
     return activations.map(activation => ({
       activationId: activation.id,
@@ -308,7 +313,8 @@ export const studentService = {
 
     // Check if test is active
     const now = new Date();
-    if (!activation.isActive || activation.activationDate > now || activation.expiryDate < now) {
+    const effectiveStart = activation.startTime ?? activation.activationDate;
+    if (!activation.isActive || effectiveStart > now || activation.expiryDate < now) {
       throw new Error('Test is not currently available');
     }
 
@@ -347,6 +353,16 @@ export const studentService = {
         where: { attemptId: existingAttempt.id },
       });
 
+      // Re-schedule expiry job if not already queued (idempotent via jobId)
+      const durationMs = activation.masterTest.duration * 60 * 1000;
+      const elapsedMs = Date.now() - existingAttempt.startedAt.getTime();
+      const delay = Math.max(0, durationMs - elapsedMs);
+      await testExpiryQueue.add(
+        'auto-submit',
+        { attemptId: existingAttempt.id },
+        { delay, jobId: `auto-submit-${existingAttempt.id}` }
+      ).catch(err => console.error('[Queue] Failed to schedule expiry job:', err));
+
       return {
         attempt: existingAttempt,
         test: activation.masterTest,
@@ -369,6 +385,14 @@ export const studentService = {
         status: 'IN_PROGRESS',
       },
     });
+
+    // Schedule BullMQ job to auto-submit when time expires
+    const durationMs = activation.masterTest.duration * 60 * 1000;
+    await testExpiryQueue.add(
+      'auto-submit',
+      { attemptId: attempt.id },
+      { delay: durationMs, jobId: `auto-submit-${attempt.id}` }
+    ).catch(err => console.error('[Queue] Failed to schedule expiry job:', err));
 
     // Return attempt with questions (hide answers and explanations)
     return {
@@ -705,6 +729,17 @@ export const studentService = {
       data: { rank },
     });
 
+    // Cancel the BullMQ auto-submit job (student submitted early)
+    try {
+      const expiryJob = await testExpiryQueue.getJob(`auto-submit-${attemptId}`);
+      if (expiryJob) await expiryJob.remove();
+    } catch (err) {
+      console.error('[Queue] Failed to remove expiry job:', err);
+    }
+
+    // Stop the Socket.io timer interval for this attempt
+    clearTimerInterval(attemptId);
+
     // Enqueue AI report generation - COMMENTED OUT FOR NOW
     // try {
     //   const { addReportJob } = require('../lib/queue');
@@ -717,6 +752,141 @@ export const studentService = {
       ...submittedAttempt,
       rank,
     };
+  },
+
+  // Auto-submit an attempt when time expires (called by BullMQ worker)
+  autoSubmitExpiredTest: async (attemptId: string) => {
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        testActivation: {
+          include: {
+            masterTest: {
+              include: {
+                questions: {
+                  include: { options: true },
+                },
+              },
+            },
+          },
+        },
+        answers: true,
+      },
+    });
+
+    if (!attempt) {
+      console.warn(`[Expiry] Attempt ${attemptId} not found`);
+      return;
+    }
+
+    // Skip if already submitted (student submitted before the job fired)
+    if (attempt.status !== 'IN_PROGRESS') {
+      console.log(`[Expiry] Attempt ${attemptId} already closed (${attempt.status}), skipping`);
+      return;
+    }
+
+    // --- Score the attempt (same logic as submitTest) ---
+    let obtainedMarks = 0;
+    const questions = attempt.testActivation.masterTest.questions;
+
+    for (const answer of attempt.answers) {
+      const question = questions.find(q => q.id === answer.questionId);
+      if (!question) continue;
+
+      let isCorrect = false;
+      let marksObtained = 0;
+
+      switch (question.questionType) {
+        case 'MCQ':
+        case 'COMPREHENSION_SUB': {
+          const correctOption = question.options.find(o => o.isCorrect);
+          isCorrect = answer.selectedAnswer === correctOption?.optionLabel;
+          marksObtained = isCorrect ? question.marks : 0;
+          break;
+        }
+        case 'MCQ_MULTIPLE': {
+          const correctOptions = question.options.filter(o => o.isCorrect).map(o => o.optionLabel).sort();
+          const studentAnswers = ((answer.selectedAnswers as string[]) || []).sort();
+          const allCorrect = correctOptions.length === studentAnswers.length &&
+            correctOptions.every((opt, idx) => opt === studentAnswers[idx]);
+          if (allCorrect) {
+            isCorrect = true;
+            marksObtained = question.marks;
+          } else if (question.partialMarking && studentAnswers.length > 0) {
+            const correctSelected = studentAnswers.filter(ans => correctOptions.includes(ans)).length;
+            const incorrectSelected = studentAnswers.filter(ans => !correctOptions.includes(ans)).length;
+            const netCorrect = correctSelected - incorrectSelected;
+            marksObtained = netCorrect > 0 ? (netCorrect / correctOptions.length) * question.marks : 0;
+          }
+          break;
+        }
+        case 'MATCH_FOLLOWING': {
+          isCorrect = answer.selectedAnswer === question.correctAnswer;
+          marksObtained = isCorrect ? question.marks : 0;
+          break;
+        }
+        case 'NUMERICAL':
+        case 'TRUE_FALSE': {
+          isCorrect = answer.selectedAnswer?.toLowerCase() === question.correctAnswer?.toLowerCase();
+          marksObtained = isCorrect ? question.marks : 0;
+          break;
+        }
+      }
+
+      obtainedMarks += marksObtained;
+
+      await prisma.studentAnswer.update({
+        where: { id: answer.id },
+        data: { isCorrect, marksObtained },
+      });
+    }
+
+    const totalMarks = attempt.testActivation.masterTest.totalMarks;
+    const percentage = (obtainedMarks / totalMarks) * 100;
+    const isPassed = obtainedMarks >= attempt.testActivation.masterTest.passingMarks;
+    const timeSpent = Math.floor((Date.now() - attempt.startedAt.getTime()) / 1000 / 60);
+
+    const submittedAttempt = await prisma.testAttempt.update({
+      where: { id: attemptId },
+      data: {
+        status: 'SUBMITTED',
+        submittedAt: new Date(),
+        obtainedMarks,
+        percentage,
+        isPassed,
+        timeSpent,
+      },
+    });
+
+    // Rank calculation (same as submitTest)
+    const betterAttempts = await prisma.testAttempt.count({
+      where: {
+        testActivationId: attempt.testActivationId,
+        status: 'SUBMITTED',
+        OR: [
+          { obtainedMarks: { gt: obtainedMarks } },
+          {
+            AND: [
+              { obtainedMarks: obtainedMarks },
+              { timeSpent: { lt: timeSpent } },
+            ],
+          },
+        ],
+      },
+    });
+
+    const rank = betterAttempts + 1;
+
+    await prisma.testAttempt.update({
+      where: { id: attemptId },
+      data: { rank },
+    });
+
+    // Stop the Socket.io timer interval
+    clearTimerInterval(attemptId);
+
+    console.log(`[Expiry] Attempt ${attemptId} auto-submitted. Marks: ${obtainedMarks}/${totalMarks}, Rank: ${rank}`);
+    return { ...submittedAttempt, rank };
   },
 
   // Get test result

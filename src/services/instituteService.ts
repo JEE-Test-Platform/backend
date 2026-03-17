@@ -501,23 +501,15 @@ export const instituteService = {
       throw new Error('Institute not found');
     }
 
-    // Check if test is already activated
-    const existing = await prisma.instituteTestActivation.findUnique({
-      where: {
-        instituteId_masterTestId: {
-          instituteId: institute.id,
-          masterTestId: activationData.masterTestId,
-        },
-      },
-    });
-
-    if (existing) {
-      throw new Error('Test already activated for this institute');
-    }
-
     // Parse dates and times
     const activationDate = new Date(activationData.activationDate);
+    // Set expiryDate to end of the selected day so students can access it all day
     const expiryDate = new Date(activationData.expiryDate);
+    expiryDate.setUTCHours(23, 59, 59, 999);
+
+    if (activationDate >= expiryDate) {
+      throw new Error('Activation date must be before expiry date');
+    }
 
     // Combine date with time if provided (time is in HH:MM format)
     let startTime = null;
@@ -535,18 +527,42 @@ export const instituteService = {
       endTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
     }
 
-    const activation = await prisma.instituteTestActivation.create({
-      data: {
-        instituteId: institute.id,
-        masterTestId: activationData.masterTestId,
-        activationDate,
-        expiryDate,
-        startTime,
-        endTime,
-        maxAttempts: activationData.maxAttempts || 1,
-        isActive: true,
+    const activationPayload = {
+      activationDate,
+      expiryDate,
+      startTime,
+      endTime,
+      maxAttempts: activationData.maxAttempts || 1,
+      isActive: true,
+    };
+
+    // Check if an activation already exists for this test in this institute.
+    // If it does, update it (allows re-scheduling an expired or deactivated test)
+    // rather than blocking the institute permanently.
+    const existing = await prisma.instituteTestActivation.findUnique({
+      where: {
+        instituteId_masterTestId: {
+          instituteId: institute.id,
+          masterTestId: activationData.masterTestId,
+        },
       },
     });
+
+    let activation;
+    if (existing) {
+      activation = await prisma.instituteTestActivation.update({
+        where: { id: existing.id },
+        data: activationPayload,
+      });
+    } else {
+      activation = await prisma.instituteTestActivation.create({
+        data: {
+          instituteId: institute.id,
+          masterTestId: activationData.masterTestId,
+          ...activationPayload,
+        },
+      });
+    }
 
     return activation;
   },

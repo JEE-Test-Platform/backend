@@ -19,6 +19,14 @@ export const connection = new IORedis(redisUrl, {
     } : {})
 });
 
+export const testExpiryQueue = new Queue('test-expiry', {
+    connection,
+    defaultJobOptions: {
+        removeOnComplete: true,
+        removeOnFail: false,
+    },
+});
+
 export const reportQueue = new Queue('ai-report-queue', {
     connection: connection as any,
     defaultJobOptions: {
