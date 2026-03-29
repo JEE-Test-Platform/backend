@@ -357,7 +357,7 @@ export const studentService = {
       const durationMs = activation.masterTest.duration * 60 * 1000;
       const elapsedMs = Date.now() - existingAttempt.startedAt.getTime();
       const delay = Math.max(0, durationMs - elapsedMs);
-      await testExpiryQueue.add(
+      testExpiryQueue.add(
         'auto-submit',
         { attemptId: existingAttempt.id },
         { delay, jobId: `auto-submit-${existingAttempt.id}` }
@@ -388,7 +388,7 @@ export const studentService = {
 
     // Schedule BullMQ job to auto-submit when time expires
     const durationMs = activation.masterTest.duration * 60 * 1000;
-    await testExpiryQueue.add(
+    testExpiryQueue.add(
       'auto-submit',
       { attemptId: attempt.id },
       { delay: durationMs, jobId: `auto-submit-${attempt.id}` }
