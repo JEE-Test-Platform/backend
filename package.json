@@ -15,7 +15,9 @@
     "azurite:start": "docker-compose -f docker-compose.azurite.yml up -d",
     "azurite:stop": "docker-compose -f docker-compose.azurite.yml down",
     "migrate:images": "ts-node src/scripts/migrateBase64ToBlob.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [],
   "author": "",
@@ -35,20 +37,27 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "papaparse": "^5.5.3",
+    "socket.io": "^4.8.3",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
+    "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.10.1",
     "@types/papaparse": "^5.5.0",
+    "@types/supertest": "^7.2.0",
     "@types/uuid": "^10.0.0",
     "azurite": "^3.35.0",
+    "jest": "^30.2.0",
     "nodemon": "^3.1.11",
     "prisma": "^5.22.0",
+    "socket.io-client": "^4.8.3",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.9.3"

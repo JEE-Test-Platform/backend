@@ -21,19 +21,19 @@ model User {
   updatedAt DateTime @updatedAt
 
   // User profile based on role
-  student     Student?
-  institute   Institute?
-  operator    Operator?
-  superAdmin  SuperAdmin?
-  teacher     Teacher?
+  student    Student?
+  institute  Institute?
+  operator   Operator?
+  superAdmin SuperAdmin?
+  teacher    Teacher?
 
   @@map("users")
 }
 
 model Student {
-  id               String   @id @default(cuid())
-  userId           String   @unique
-  instituteId      String   // Student belongs to one institute
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  instituteId      String // Student belongs to one institute
   firstName        String
   lastName         String
   phone            String?
@@ -46,14 +46,14 @@ model Student {
   guardianName     String?
   guardianPhone    String?
   emergencyContact String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  institute        Institute         @relation(fields: [instituteId], references: [id], onDelete: Restrict)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institute Institute @relation(fields: [instituteId], references: [id], onDelete: Restrict)
 
   // Student specific relations
-  testAttempts     TestAttempt[]
+  testAttempts TestAttempt[]
 
   @@map("students")
 }
@@ -78,7 +78,7 @@ model Institute {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Institute specific relations
   students        Student[]
@@ -98,7 +98,7 @@ model Operator {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Operator creates master tests
   masterTests MasterTest[]
@@ -116,7 +116,7 @@ model SuperAdmin {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("super_admins")
 }
@@ -126,173 +126,173 @@ model Teacher {
   userId    String   @unique
   firstName String
   lastName  String
-  subject   Subject  // The subject this teacher is expert in
+  subject   Subject // The subject this teacher is expert in
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("teachers")
 }
 
 // Master Test created by Operator - reusable across institutes
 model MasterTest {
-  id              String        @id @default(cuid())
-  title           String
-  description     String?
-  testType        TestType      @default(MOCK_TEST) // JEE_MAIN, JEE_ADVANCED, MOCK_TEST, etc.
-  duration        Int           // Duration in minutes
-  totalMarks      Int
-  passingMarks    Int
-  instructions    String?
-  isActive        Boolean       @default(true)
-  status          TestStatus    @default(DRAFT)  // DRAFT or PUBLISHED
-  createdById     String        // Operator who created this
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id           String     @id @default(cuid())
+  title        String
+  description  String?
+  testType     TestType   @default(MOCK_TEST) // JEE_MAIN, JEE_ADVANCED, MOCK_TEST, etc.
+  duration     Int // Duration in minutes
+  totalMarks   Int
+  passingMarks Int
+  instructions String?
+  isActive     Boolean    @default(true)
+  status       TestStatus @default(DRAFT) // DRAFT or PUBLISHED
+  createdById  String // Operator who created this
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  createdBy       Operator      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy Operator @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   // Master Test relations
-  questions       Question[]
-  activations     InstituteTestActivation[]
+  questions   Question[]
+  activations InstituteTestActivation[]
 
   @@map("master_tests")
 }
 
 // Institute activates a master test for their students
 model InstituteTestActivation {
-  id              String        @id @default(cuid())
-  instituteId     String
-  masterTestId    String
-  activationDate  DateTime      // When test becomes available
-  expiryDate      DateTime      // When test expires
-  startTime       DateTime?     // Optional: specific exam start time
-  endTime         DateTime?     // Optional: specific exam end time
-  isActive        Boolean       @default(true)
-  maxAttempts     Int           @default(1) // How many times students can attempt
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id             String    @id @default(cuid())
+  instituteId    String
+  masterTestId   String
+  activationDate DateTime // When test becomes available
+  expiryDate     DateTime // When test expires
+  startTime      DateTime? // Optional: specific exam start time
+  endTime        DateTime? // Optional: specific exam end time
+  isActive       Boolean   @default(true)
+  maxAttempts    Int       @default(1) // How many times students can attempt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  institute       Institute     @relation(fields: [instituteId], references: [id], onDelete: Cascade)
-  masterTest      MasterTest    @relation(fields: [masterTestId], references: [id], onDelete: Restrict)
+  institute  Institute  @relation(fields: [instituteId], references: [id], onDelete: Cascade)
+  masterTest MasterTest @relation(fields: [masterTestId], references: [id], onDelete: Restrict)
 
   // Activation relations
-  attempts        TestAttempt[]
+  attempts TestAttempt[]
 
   @@unique([instituteId, masterTestId]) // One activation per test per institute
   @@map("institute_test_activations")
 }
 
 model Question {
-  id              String           @id @default(cuid())
-  masterTestId    String
-  questionText    String
-  questionType    QuestionType
-  subject         Subject
-  difficulty      Difficulty
-  nature          QuestionNature   @default(CONCEPTUAL)  // Question classification: conceptual, formula-based, or calculation-based
-  marks           Int
-  correctAnswer   String?          // For numerical/true-false questions (null for MCQ)
-  explanation     String?
-  imageUrl        String?
-  questionOrder   Int              // Order in test
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id            String         @id @default(cuid())
+  masterTestId  String
+  questionText  String
+  questionType  QuestionType
+  subject       Subject
+  difficulty    Difficulty
+  nature        QuestionNature @default(CONCEPTUAL) // Question classification: conceptual, formula-based, or calculation-based
+  marks         Int
+  correctAnswer String? // For numerical/true-false questions (null for MCQ)
+  explanation   String?
+  imageUrl      String?
+  questionOrder Int // Order in test
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   // Topic and subtopic labels (optional, for categorization)
-  topic           String?          // e.g., "Structure of Atom"
-  subtopic        String?          // e.g., "Bohr's models (including limitations)."
+  topic    String? // e.g., "Structure of Atom"
+  subtopic String? // e.g., "Bohr's models (including limitations)."
 
   // Negative marks deducted for wrong answers (stored as positive, e.g. 1 means -1)
-  negativeMarks   Float            @default(0)
+  negativeMarks Float @default(0)
 
   // For MCQ_MULTIPLE: Enable partial marking
-  partialMarking  Boolean          @default(false)
+  partialMarking Boolean @default(false)
 
   // For COMPREHENSION: Passage text and parent-child relationship
-  passageText     String?          @db.Text
+  passageText      String? @db.Text
   parentQuestionId String?
 
   // For MATCH_FOLLOWING: Column items and correct matches
-  columnIItems    Json?            // Array of {label: "A", text: "Item 1"}
-  columnIIItems   Json?            // Array of {label: "1", text: "Match 1"}
-  correctMatches  Json?            // Array of {from: "A", to: "1"}
-  matchRows       Int?             // Number of rows (3, 4, or 5)
+  columnIItems   Json? // Array of {label: "A", text: "Item 1"}
+  columnIIItems  Json? // Array of {label: "1", text: "Match 1"}
+  correctMatches Json? // Array of {from: "A", to: "1"}
+  matchRows      Int? // Number of rows (3, 4, or 5)
 
-  masterTest      MasterTest       @relation(fields: [masterTestId], references: [id], onDelete: Cascade)
+  masterTest MasterTest @relation(fields: [masterTestId], references: [id], onDelete: Cascade)
 
   // Question relations
-  options         Option[]         // MCQ options as separate table
-  answers         StudentAnswer[]
+  options Option[] // MCQ options as separate table
+  answers StudentAnswer[]
 
   // Comprehension parent-child relationship
-  subQuestions    Question[]       @relation("ComprehensionQuestions")
-  parentQuestion  Question?        @relation("ComprehensionQuestions", fields: [parentQuestionId], references: [id], onDelete: Cascade)
+  subQuestions   Question[] @relation("ComprehensionQuestions")
+  parentQuestion Question?  @relation("ComprehensionQuestions", fields: [parentQuestionId], references: [id], onDelete: Cascade)
 
   @@map("questions")
 }
 
 // Separate Option model for better analytics and flexibility
 model Option {
-  id              String           @id @default(cuid())
-  questionId      String
-  optionLabel     String           // A, B, C, D
-  optionText      String
-  optionImageUrl  String?
-  isCorrect       Boolean          @default(false)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id             String   @id @default(cuid())
+  questionId     String
+  optionLabel    String // A, B, C, D
+  optionText     String
+  optionImageUrl String?
+  isCorrect      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  question        Question         @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@map("options")
 }
 
 model TestAttempt {
-  id                  String           @id @default(cuid())
-  studentId           String
-  testActivationId    String           // Links to institute's test activation
-  attemptNumber       Int              @default(1) // 1st attempt, 2nd attempt, etc.
-  startedAt           DateTime         @default(now())
-  submittedAt         DateTime?
-  timeSpent           Int?             // Time in minutes
-  totalMarks          Int?
-  obtainedMarks       Int?
-  percentage          Float?
-  isPassed            Boolean?
-  rank                Int?             // Rank in this institute for this test
-  status              AttemptStatus    @default(IN_PROGRESS)
-  aiAnalysisReport    String?          @db.Text
-  analysisStatus      AnalysisStatus   @default(PENDING)
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  id               String         @id @default(cuid())
+  studentId        String
+  testActivationId String // Links to institute's test activation
+  attemptNumber    Int            @default(1) // 1st attempt, 2nd attempt, etc.
+  startedAt        DateTime       @default(now())
+  submittedAt      DateTime?
+  timeSpent        Int? // Time in minutes
+  totalMarks       Int?
+  obtainedMarks    Int?
+  percentage       Float?
+  isPassed         Boolean?
+  rank             Int? // Rank in this institute for this test
+  status           AttemptStatus  @default(IN_PROGRESS)
+  aiAnalysisReport String?        @db.Text
+  analysisStatus   AnalysisStatus @default(PENDING)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  student             Student                     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  testActivation      InstituteTestActivation     @relation(fields: [testActivationId], references: [id], onDelete: Cascade)
+  student        Student                 @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  testActivation InstituteTestActivation @relation(fields: [testActivationId], references: [id], onDelete: Cascade)
 
   // Attempt relations
-  answers             StudentAnswer[]
+  answers StudentAnswer[]
 
   @@unique([studentId, testActivationId, attemptNumber]) // Allow multiple attempts per activation
   @@map("test_attempts")
 }
 
 model StudentAnswer {
-  id              String       @id @default(cuid())
+  id              String   @id @default(cuid())
   attemptId       String
   questionId      String
-  selectedAnswer  String?      // For MCQ: option label (A/B/C/D), for Numerical: the number
-  answerText      String?      // Additional text if needed
-  selectedAnswers Json?        // For MCQ_MULTIPLE: array of labels ["A", "C"], for MATCH_FOLLOWING: array of {from, to}
+  selectedAnswer  String? // For MCQ: option label (A/B/C/D), for Numerical: the number
+  answerText      String? // Additional text if needed
+  selectedAnswers Json? // For MCQ_MULTIPLE: array of labels ["A", "C"], for MATCH_FOLLOWING: array of {from, to}
   isCorrect       Boolean?
   marksObtained   Int?
-  timeSpent       Int?         // Time in seconds
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  timeSpent       Int? // Time in seconds
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  attempt         TestAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question        Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  attempt  TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([attemptId, questionId])
   @@map("student_answers")
@@ -320,13 +320,13 @@ enum Subject {
 }
 
 enum QuestionType {
-  MCQ                    // Single correct answer
-  MCQ_MULTIPLE           // Multiple correct answers
-  NUMERICAL              // Numerical answer
-  TRUE_FALSE             // True/False question
-  MATCH_FOLLOWING        // Match the following
-  COMPREHENSION          // Paragraph-based question (parent)
-  COMPREHENSION_SUB      // Sub-question under comprehension
+  MCQ // Single correct answer
+  MCQ_MULTIPLE // Multiple correct answers
+  NUMERICAL // Numerical answer
+  TRUE_FALSE // True/False question
+  MATCH_FOLLOWING // Match the following
+  COMPREHENSION // Paragraph-based question (parent)
+  COMPREHENSION_SUB // Sub-question under comprehension
 }
 
 enum Difficulty {
@@ -336,9 +336,9 @@ enum Difficulty {
 }
 
 enum QuestionNature {
-  CONCEPTUAL          // Understanding/theory-based questions
-  FORMULA_BASED       // Questions requiring formula memorization and application
-  APPLICATION_BASED   // Real-world application and problem-solving questions
+  CONCEPTUAL // Understanding/theory-based questions
+  FORMULA_BASED // Questions requiring formula memorization and application
+  APPLICATION_BASED // Real-world application and problem-solving questions
 }
 
 enum AttemptStatus {
