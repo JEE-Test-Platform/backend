@@ -34,8 +34,11 @@ router.post('/tests/create-with-questions', imageUrlValidator, operatorControlle
 router.post('/tests/draft', operatorController.createDraftTest);
 router.get('/tests/:testId/draft', operatorController.getDraftTest);
 router.post('/tests/:testId/questions', imageUrlValidator, operatorController.addQuestion);
+router.patch('/tests/:testId/questions/reorder', operatorController.reorderQuestions);
 router.put('/tests/:testId/questions/:questionId', imageUrlValidator, operatorController.updateQuestion);
 router.delete('/tests/:testId/questions/:questionId', operatorController.deleteQuestion);
 router.patch('/tests/:testId/publish', operatorController.publishTest);
+router.patch('/tests/:testId/unpublish', operatorController.unpublishTest);
+router.post('/tests/:testId/activate-all', operatorController.activateTestForAllInstitutes);
 
 export default router;

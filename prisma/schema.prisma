@@ -204,6 +204,9 @@ model Question {
   topic           String?          // e.g., "Structure of Atom"
   subtopic        String?          // e.g., "Bohr's models (including limitations)."
 
+  // Negative marks deducted for wrong answers (stored as positive, e.g. 1 means -1)
+  negativeMarks   Float            @default(0)
+
   // For MCQ_MULTIPLE: Enable partial marking
   partialMarking  Boolean          @default(false)
 

@@ -373,4 +373,64 @@ export const operatorController = {
       res.status(400).json({ success: false, message: error.message || 'Failed to publish test' });
     }
   },
+
+  // Reorder questions in a draft test
+  reorderQuestions: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { testId } = req.params;
+      const { questionIds } = req.body;
+
+      if (!Array.isArray(questionIds) || questionIds.length === 0) {
+        return res.status(400).json({ success: false, message: 'questionIds must be a non-empty array' });
+      }
+
+      await operatorService.reorderQuestions(userId, testId, questionIds);
+      res.json({ success: true, message: 'Questions reordered successfully' });
+    } catch (error: any) {
+      console.error('Error reordering questions:', error);
+      res.status(400).json({ success: false, message: error.message || 'Failed to reorder questions' });
+    }
+  },
+
+  // Unpublish a test (move back to DRAFT for editing)
+  unpublishTest: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { testId } = req.params;
+
+      console.log('📝 Unpublishing test:', testId);
+
+      const result = await operatorService.unpublishTest(userId, testId);
+      res.json({
+        success: true,
+        data: result,
+        message: 'Test moved back to draft. Make your changes and republish.',
+      });
+    } catch (error: any) {
+      console.error('Error unpublishing test:', error);
+      res.status(400).json({ success: false, message: error.message || 'Failed to unpublish test' });
+    }
+  },
+
+  // Activate a published test for all institutes
+  activateTestForAllInstitutes: async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { testId } = req.params;
+      const activationData = req.body;
+
+      console.log('🌐 Activating test for all institutes:', testId);
+
+      const result = await operatorService.activateTestForAllInstitutes(userId, testId, activationData);
+      res.json({
+        success: true,
+        data: result,
+        message: `Test activated for ${result.newlyActivated} institutes (${result.alreadyActivated} already had it)`,
+      });
+    } catch (error: any) {
+      console.error('Error activating test for all institutes:', error);
+      res.status(400).json({ success: false, message: error.message || 'Failed to activate test' });
+    }
+  },
 };

@@ -788,6 +788,7 @@ export const operatorService = {
           },
           orderBy: { questionOrder: 'asc' },
         },
+        _count: { select: { activations: true } },
       },
     });
 
@@ -845,6 +846,7 @@ export const operatorService = {
           subtopic: questionData.subtopic || null,
           correctAnswer: questionData.correctAnswer,
           marks: questionData.marks,
+          negativeMarks: questionData.negativeMarks ?? 0,
           questionOrder: questionData.orderIndex || questionOrder,
           explanation: questionData.explanation,
           imageUrl: questionData.questionImageUrl,
@@ -956,6 +958,7 @@ export const operatorService = {
           subtopic: questionData.subtopic || null,
           correctAnswer: questionData.correctAnswer,
           marks: questionData.marks,
+          negativeMarks: questionData.negativeMarks ?? 0,
           explanation: questionData.explanation,
           imageUrl: questionData.questionImageUrl,
           partialMarking: questionData.partialMarking || false,
@@ -1101,5 +1104,152 @@ export const operatorService = {
     });
 
     return publishedTest;
+  },
+
+  // Reorder questions in a draft test
+  reorderQuestions: async (userId: string, testId: string, questionIds: string[]) => {
+    const operator = await prisma.operator.findUnique({ where: { userId } });
+    if (!operator) throw new Error('Operator not found');
+
+    const test = await prisma.masterTest.findUnique({
+      where: { id: testId },
+      include: { questions: { select: { id: true } } },
+    });
+
+    if (!test) throw new Error('Test not found');
+    if (test.createdById !== operator.id) throw new Error('You do not have permission to modify this test');
+    if (test.status === 'PUBLISHED') throw new Error('Cannot reorder questions in a published test');
+
+    const existingIds = new Set(test.questions.map((q) => q.id));
+    if (questionIds.length !== existingIds.size || !questionIds.every((id) => existingIds.has(id))) {
+      throw new Error('Invalid question IDs — must include all questions for this test');
+    }
+
+    await prisma.$transaction(
+      questionIds.map((id, index) =>
+        prisma.question.update({
+          where: { id },
+          data: { questionOrder: index + 1 },
+        })
+      )
+    );
+
+    return { success: true };
+  },
+
+  // Unpublish a test (move back to DRAFT for editing)
+  unpublishTest: async (userId: string, testId: string) => {
+    const operator = await prisma.operator.findUnique({ where: { userId } });
+    if (!operator) throw new Error('Operator not found');
+
+    const test = await prisma.masterTest.findUnique({
+      where: { id: testId },
+      include: {
+        _count: { select: { activations: true } },
+        activations: {
+          include: {
+            attempts: {
+              where: { status: 'IN_PROGRESS' },
+              select: { id: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!test) throw new Error('Test not found');
+    if (test.createdById !== operator.id) throw new Error('You do not have permission to modify this test');
+    if (test.status !== 'PUBLISHED') throw new Error('Test is not published');
+
+    const inProgressAttempts = test.activations.reduce((sum, a) => sum + a.attempts.length, 0);
+
+    const updatedTest = await prisma.masterTest.update({
+      where: { id: testId },
+      data: { status: 'DRAFT' },
+    });
+
+    return {
+      test: updatedTest,
+      activationsCount: test._count.activations,
+      inProgressAttempts,
+    };
+  },
+
+  // Activate a published test for ALL institutes
+  activateTestForAllInstitutes: async (
+    userId: string,
+    testId: string,
+    activationData: {
+      activationDate: string;
+      expiryDate: string;
+      maxAttempts?: number;
+      startTime?: string;
+      endTime?: string;
+    }
+  ) => {
+    const operator = await prisma.operator.findUnique({ where: { userId } });
+    if (!operator) throw new Error('Operator not found');
+
+    const test = await prisma.masterTest.findUnique({ where: { id: testId } });
+    if (!test) throw new Error('Test not found');
+    if (test.createdById !== operator.id) throw new Error('You do not have permission to activate this test');
+    if (test.status !== 'PUBLISHED') throw new Error('Only published tests can be activated');
+
+    if (!activationData.activationDate || !activationData.expiryDate) {
+      throw new Error('activationDate and expiryDate are required');
+    }
+
+    const activationDate = new Date(activationData.activationDate);
+    const expiryDate = new Date(activationData.expiryDate);
+
+    if (activationDate >= expiryDate) {
+      throw new Error('activationDate must be before expiryDate');
+    }
+
+    let startTime: Date | null = null;
+    let endTime: Date | null = null;
+
+    if (activationData.startTime) {
+      const [hours, minutes] = activationData.startTime.split(':');
+      startTime = new Date(activationData.activationDate);
+      startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    }
+
+    if (activationData.endTime) {
+      const [hours, minutes] = activationData.endTime.split(':');
+      endTime = new Date(activationData.expiryDate);
+      endTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    }
+
+    const allInstitutes = await prisma.institute.findMany({ select: { id: true } });
+
+    const existingActivations = await prisma.instituteTestActivation.findMany({
+      where: { masterTestId: testId },
+      select: { instituteId: true },
+    });
+    const alreadyActivatedIds = new Set(existingActivations.map((a) => a.instituteId));
+
+    const toCreate = allInstitutes
+      .filter((inst) => !alreadyActivatedIds.has(inst.id))
+      .map((inst) => ({
+        instituteId: inst.id,
+        masterTestId: testId,
+        activationDate,
+        expiryDate,
+        startTime,
+        endTime,
+        maxAttempts: activationData.maxAttempts ?? 1,
+        isActive: true,
+      }));
+
+    if (toCreate.length > 0) {
+      await prisma.instituteTestActivation.createMany({ data: toCreate });
+    }
+
+    return {
+      totalInstitutes: allInstitutes.length,
+      alreadyActivated: alreadyActivatedIds.size,
+      newlyActivated: toCreate.length,
+    };
   },
 };
