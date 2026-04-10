@@ -1,4 +1,4 @@
-name: Backend CI/CD TEMP
+name: Backend CI/CD 
 
 on:
   push:
