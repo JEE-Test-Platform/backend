@@ -242,15 +242,10 @@ export class AuthService {
 
   // Login
   async login(data: LoginDTO) {
+    // Step 1: fetch only auth fields — no profile joins yet
     const user = await prisma.user.findUnique({
       where: { email: data.email },
-      include: {
-        student: true,
-        institute: true,
-        operator: true,
-        superAdmin: true,
-        teacher: true,
-      },
+      select: { id: true, email: true, password: true, role: true, isActive: true },
     });
 
     if (!user) {
@@ -267,31 +262,31 @@ export class AuthService {
       throw new Error('Invalid email or password');
     }
 
-    // Get profile based on role
-    let profile = null;
-    let profileId = undefined;
+    // Step 2: fetch only the profile that matches this user's role
+    let profile: Record<string, unknown> | null = null;
+    let profileId: string | undefined;
 
     switch (user.role) {
-      case Role.STUDENT:
-        profile = user.student;
-        profileId = user.student?.id;
-        break;
-      case Role.INSTITUTE:
-        profile = user.institute;
-        profileId = user.institute?.id;
-        break;
-      case Role.OPERATOR:
-        profile = user.operator;
-        profileId = user.operator?.id;
-        break;
-      case Role.SUPER_ADMIN:
-        profile = user.superAdmin;
-        profileId = user.superAdmin?.id;
-        break;
-      case Role.TEACHER:
-        profile = user.teacher;
-        profileId = user.teacher?.id;
-        break;
+      case Role.STUDENT: {
+        const s = await prisma.student.findUnique({ where: { userId: user.id } });
+        profile = s; profileId = s?.id; break;
+      }
+      case Role.INSTITUTE: {
+        const i = await prisma.institute.findUnique({ where: { userId: user.id } });
+        profile = i; profileId = i?.id; break;
+      }
+      case Role.OPERATOR: {
+        const o = await prisma.operator.findUnique({ where: { userId: user.id } });
+        profile = o; profileId = o?.id; break;
+      }
+      case Role.SUPER_ADMIN: {
+        const a = await prisma.superAdmin.findUnique({ where: { userId: user.id } });
+        profile = a; profileId = a?.id; break;
+      }
+      case Role.TEACHER: {
+        const t = await prisma.teacher.findUnique({ where: { userId: user.id } });
+        profile = t; profileId = t?.id; break;
+      }
     }
 
     const token = generateToken({

@@ -667,6 +667,11 @@ export const studentService = {
       throw new Error('Unauthorized to access this attempt');
     }
 
+    // Idempotent: if already submitted (e.g. double-click), return existing result
+    if (attempt.status === 'SUBMITTED' || attempt.status === 'EXPIRED') {
+      return { attemptId, status: attempt.status, alreadySubmitted: true };
+    }
+
     if (attempt.status !== 'IN_PROGRESS') {
       throw new Error('Test is not in progress');
     }
