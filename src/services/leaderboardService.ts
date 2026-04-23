@@ -79,6 +79,7 @@ export const leaderboardService = {
     let previousMarks = null;
     let previousTime = null;
     let studentsWithSameRank = 0;
+    const rankUpdates: { id: string; rank: number }[] = [];
 
     for (let i = 0; i < attempts.length; i++) {
       const attempt = attempts[i];
@@ -112,13 +113,18 @@ export const leaderboardService = {
       previousMarks = attempt.obtainedMarks;
       previousTime = attempt.timeSpent;
 
-      // Update rank in database if not already set or different
       if (attempt.rank !== currentRank) {
-        await prisma.testAttempt.update({
-          where: { id: attempt.id },
-          data: { rank: currentRank },
-        });
+        rankUpdates.push({ id: attempt.id, rank: currentRank });
       }
+    }
+
+    // Batch all rank updates in a single transaction instead of N sequential queries
+    if (rankUpdates.length > 0) {
+      await prisma.$transaction(
+        rankUpdates.map(({ id, rank }) =>
+          prisma.testAttempt.update({ where: { id }, data: { rank } })
+        )
+      );
     }
 
     // Calculate statistics

@@ -285,15 +285,46 @@ export const studentService = {
       throw new Error('Student not found');
     }
 
-    // Get test activation
+    // Get test activation — select only fields students need; never send correctAnswer/explanation to client
     const activation = await prisma.instituteTestActivation.findUnique({
       where: { id: testActivationId },
       include: {
         masterTest: {
-          include: {
+          select: {
+            id: true,
+            title: true,
+            testType: true,
+            duration: true,
+            totalMarks: true,
+            passingMarks: true,
+            instructions: true,
             questions: {
-              include: {
-                options: true,
+              select: {
+                id: true,
+                questionText: true,
+                questionType: true,
+                questionOrder: true,
+                subject: true,
+                difficulty: true,
+                nature: true,
+                marks: true,
+                negativeMarks: true,
+                partialMarking: true,
+                imageUrl: true,
+                passageText: true,
+                parentQuestionId: true,
+                columnIItems: true,
+                columnIIItems: true,
+                correctMatches: true,
+                matchRows: true,
+                options: {
+                  select: {
+                    id: true,
+                    optionLabel: true,
+                    optionText: true,
+                    optionImageUrl: true,
+                  },
+                },
               },
               orderBy: { questionOrder: 'asc' },
             },
@@ -340,15 +371,7 @@ export const studentService = {
     });
 
     if (existingAttempt) {
-      // Return existing attempt
-      const questions = await prisma.question.findMany({
-        where: { masterTestId: activation.masterTest.id },
-        include: {
-          options: true,
-        },
-        orderBy: { questionOrder: 'asc' },
-      });
-
+      // Reuse questions already loaded in the activation query — no second DB round-trip
       const answers = await prisma.studentAnswer.findMany({
         where: { attemptId: existingAttempt.id },
       });
@@ -366,11 +389,7 @@ export const studentService = {
       return {
         attempt: existingAttempt,
         test: activation.masterTest,
-        questions: questions.map(q => ({
-          ...q,
-          correctAnswer: undefined, // Hide correct answer during attempt
-          explanation: undefined, // Hide explanation during attempt
-        })),
+        questions: activation.masterTest.questions, // correctAnswer/explanation not selected at DB level
         answers,
       };
     }
@@ -394,15 +413,11 @@ export const studentService = {
       { delay: durationMs, jobId: `auto-submit-${attempt.id}` }
     ).catch(err => console.error('[Queue] Failed to schedule expiry job:', err));
 
-    // Return attempt with questions (hide answers and explanations)
+    // correctAnswer and explanation are not selected at DB level so are never sent to clients
     return {
       attempt,
       test: activation.masterTest,
-      questions: activation.masterTest.questions.map(q => ({
-        ...q,
-        correctAnswer: undefined,
-        explanation: undefined,
-      })),
+      questions: activation.masterTest.questions,
       answers: [],
     };
   },
@@ -423,10 +438,44 @@ export const studentService = {
         testActivation: {
           include: {
             masterTest: {
-              include: {
+              select: {
+                id: true,
+                title: true,
+                testType: true,
+                duration: true,
+                totalMarks: true,
+                passingMarks: true,
+                instructions: true,
                 questions: {
-                  include: {
-                    options: true,
+                  select: {
+                    id: true,
+                    questionText: true,
+                    questionType: true,
+                    questionOrder: true,
+                    subject: true,
+                    difficulty: true,
+                    nature: true,
+                    marks: true,
+                    negativeMarks: true,
+                    partialMarking: true,
+                    imageUrl: true,
+                    passageText: true,
+                    parentQuestionId: true,
+                    columnIItems: true,
+                    columnIIItems: true,
+                    correctMatches: true,
+                    matchRows: true,
+                    correctAnswer: true,
+                    explanation: true,
+                    options: {
+                      select: {
+                        id: true,
+                        optionLabel: true,
+                        optionText: true,
+                        optionImageUrl: true,
+                        isCorrect: true,
+                      },
+                    },
                   },
                   orderBy: { questionOrder: 'asc' },
                 },
@@ -451,6 +500,9 @@ export const studentService = {
       ...q,
       correctAnswer: attempt.status === 'SUBMITTED' ? q.correctAnswer : undefined,
       explanation: attempt.status === 'SUBMITTED' ? q.explanation : undefined,
+      options: attempt.status === 'SUBMITTED'
+        ? q.options
+        : q.options.map(({ isCorrect: _ignored, ...rest }) => rest),
     }));
 
     return {
@@ -576,16 +628,27 @@ export const studentService = {
       throw new Error('Student not found');
     }
 
+    // Minimal select — only fields needed for scoring
     const attempt = await prisma.testAttempt.findUnique({
       where: { id: attemptId },
       include: {
         testActivation: {
-          include: {
+          select: {
+            id: true,
             masterTest: {
-              include: {
+              select: {
+                totalMarks: true,
+                passingMarks: true,
                 questions: {
-                  include: {
-                    options: true,
+                  select: {
+                    id: true,
+                    questionType: true,
+                    marks: true,
+                    correctAnswer: true,
+                    partialMarking: true,
+                    options: {
+                      select: { optionLabel: true, isCorrect: true },
+                    },
                   },
                 },
               },
@@ -611,6 +674,7 @@ export const studentService = {
     // Calculate scores
     let obtainedMarks = 0;
     const questions = attempt.testActivation.masterTest.questions;
+    const answerUpdates: { id: string; isCorrect: boolean; marksObtained: number }[] = [];
 
     for (const answer of attempt.answers) {
       const question = questions.find(q => q.id === answer.questionId);
@@ -677,16 +741,18 @@ export const studentService = {
       }
 
       obtainedMarks += marksObtained;
-
-      // Update answer with evaluation
-      await prisma.studentAnswer.update({
-        where: { id: answer.id },
-        data: {
-          isCorrect,
-          marksObtained,
-        },
-      });
+      answerUpdates.push({ id: answer.id, isCorrect, marksObtained });
     }
+
+    // Atomically update all answer evaluations in a single transaction
+    await prisma.$transaction(
+      answerUpdates.map(({ id, isCorrect, marksObtained }) =>
+        prisma.studentAnswer.update({
+          where: { id },
+          data: { isCorrect, marksObtained },
+        })
+      )
+    );
 
     const totalMarks = attempt.testActivation.masterTest.totalMarks;
     const percentage = (obtainedMarks / totalMarks) * 100;
@@ -704,30 +770,31 @@ export const studentService = {
       },
     });
 
-    // Calculate rank
-    const betterAttempts = await prisma.testAttempt.count({
-      where: {
-        testActivationId: attempt.testActivationId,
-        status: 'SUBMITTED',
-        OR: [
-          { obtainedMarks: { gt: obtainedMarks } },
-          {
-            AND: [
-              { obtainedMarks: obtainedMarks },
-              { timeSpent: { lt: timeSpent } },
-            ],
-          },
-        ],
-      },
-    });
+    // Recalculate ALL ranks for this activation atomically via SQL window function.
+    // This avoids the race condition where two concurrent submissions both count each
+    // other as "not yet submitted" and end up with duplicate ranks.
+    await prisma.$queryRaw`
+      UPDATE test_attempts
+      SET rank = subq.rn
+      FROM (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY test_activation_id
+                 ORDER BY obtained_marks DESC NULLS LAST, time_spent ASC NULLS LAST, submitted_at ASC NULLS LAST
+               ) AS rn
+        FROM test_attempts
+        WHERE test_activation_id = ${attempt.testActivationId}
+          AND status = 'SUBMITTED'
+      ) subq
+      WHERE test_attempts.id = subq.id
+    `;
 
-    const rank = betterAttempts + 1;
-
-    // Update rank
-    await prisma.testAttempt.update({
+    // Read back this attempt's rank
+    const updatedAttempt = await prisma.testAttempt.findUnique({
       where: { id: attemptId },
-      data: { rank },
+      select: { rank: true },
     });
+    const rank = updatedAttempt?.rank ?? null;
 
     // Cancel the BullMQ auto-submit job (student submitted early)
     try {
@@ -756,15 +823,28 @@ export const studentService = {
 
   // Auto-submit an attempt when time expires (called by BullMQ worker)
   autoSubmitExpiredTest: async (attemptId: string) => {
+    // Minimal select — only fields needed for scoring
     const attempt = await prisma.testAttempt.findUnique({
       where: { id: attemptId },
       include: {
         testActivation: {
-          include: {
+          select: {
+            id: true,
             masterTest: {
-              include: {
+              select: {
+                totalMarks: true,
+                passingMarks: true,
                 questions: {
-                  include: { options: true },
+                  select: {
+                    id: true,
+                    questionType: true,
+                    marks: true,
+                    correctAnswer: true,
+                    partialMarking: true,
+                    options: {
+                      select: { optionLabel: true, isCorrect: true },
+                    },
+                  },
                 },
               },
             },
@@ -788,6 +868,7 @@ export const studentService = {
     // --- Score the attempt (same logic as submitTest) ---
     let obtainedMarks = 0;
     const questions = attempt.testActivation.masterTest.questions;
+    const autoSubmitAnswerUpdates: { id: string; isCorrect: boolean; marksObtained: number }[] = [];
 
     for (const answer of attempt.answers) {
       const question = questions.find(q => q.id === answer.questionId);
@@ -834,12 +915,18 @@ export const studentService = {
       }
 
       obtainedMarks += marksObtained;
-
-      await prisma.studentAnswer.update({
-        where: { id: answer.id },
-        data: { isCorrect, marksObtained },
-      });
+      autoSubmitAnswerUpdates.push({ id: answer.id, isCorrect, marksObtained });
     }
+
+    // Batch update all answer evaluations atomically
+    await prisma.$transaction(
+      autoSubmitAnswerUpdates.map(({ id, isCorrect, marksObtained }) =>
+        prisma.studentAnswer.update({
+          where: { id },
+          data: { isCorrect, marksObtained },
+        })
+      )
+    );
 
     const totalMarks = attempt.testActivation.masterTest.totalMarks;
     const percentage = (obtainedMarks / totalMarks) * 100;
@@ -858,29 +945,28 @@ export const studentService = {
       },
     });
 
-    // Rank calculation (same as submitTest)
-    const betterAttempts = await prisma.testAttempt.count({
-      where: {
-        testActivationId: attempt.testActivationId,
-        status: 'SUBMITTED',
-        OR: [
-          { obtainedMarks: { gt: obtainedMarks } },
-          {
-            AND: [
-              { obtainedMarks: obtainedMarks },
-              { timeSpent: { lt: timeSpent } },
-            ],
-          },
-        ],
-      },
-    });
+    // Atomic rank recalculation via SQL window function (same as submitTest)
+    await prisma.$queryRaw`
+      UPDATE test_attempts
+      SET rank = subq.rn
+      FROM (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY test_activation_id
+                 ORDER BY obtained_marks DESC NULLS LAST, time_spent ASC NULLS LAST, submitted_at ASC NULLS LAST
+               ) AS rn
+        FROM test_attempts
+        WHERE test_activation_id = ${attempt.testActivationId}
+          AND status = 'SUBMITTED'
+      ) subq
+      WHERE test_attempts.id = subq.id
+    `;
 
-    const rank = betterAttempts + 1;
-
-    await prisma.testAttempt.update({
+    const updatedRankRow = await prisma.testAttempt.findUnique({
       where: { id: attemptId },
-      data: { rank },
+      select: { rank: true },
     });
+    const rank = updatedRankRow?.rank ?? null;
 
     // Stop the Socket.io timer interval
     clearTimerInterval(attemptId);
@@ -916,10 +1002,19 @@ export const studentService = {
         testActivation: {
           include: {
             masterTest: {
-              include: {
+              select: {
+                title: true,
+                testType: true,
+                totalMarks: true,
+                passingMarks: true,
+                duration: true,
                 questions: {
-                  include: {
-                    options: true,
+                  select: {
+                    id: true,
+                    subject: true,
+                    difficulty: true,
+                    nature: true,
+                    marks: true,
                   },
                   orderBy: { questionOrder: 'asc' },
                 },
@@ -927,7 +1022,14 @@ export const studentService = {
             },
           },
         },
-        answers: true,
+        answers: {
+          select: {
+            questionId: true,
+            isCorrect: true,
+            marksObtained: true,
+            timeSpent: true,
+          },
+        },
       },
     });
 
@@ -1198,10 +1300,11 @@ export const studentService = {
         studentId: student.id,
         status: 'SUBMITTED',
       },
-      include: {
+      select: {
         answers: {
-          include: {
-            question: true,
+          select: {
+            isCorrect: true,
+            question: { select: { subject: true } },
           },
         },
       },
@@ -1248,10 +1351,11 @@ export const studentService = {
         studentId: student.id,
         status: 'SUBMITTED',
       },
-      include: {
+      select: {
         answers: {
-          include: {
-            question: true,
+          select: {
+            isCorrect: true,
+            question: { select: { nature: true, difficulty: true } },
           },
         },
       },

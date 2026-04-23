@@ -1,5 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
@@ -28,11 +31,31 @@ const allowedOrigins = [
   'https://www.jeerankup.com',
 ].filter(Boolean) as string[];
 
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(compression());
+
 app.use(cors({
   origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   credentials: true,
 }));
+
+// Rate limiting — auth endpoints are brute-force targets
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests, please try again later.' },
+});
+
+// Submission limiter — prevents hammering answer/submit endpoints
+const submitLimiter = rateLimit({
+  windowMs: 10 * 1000, // 10 seconds
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Attach Socket.io to the HTTP server
 const io = new SocketIOServer(httpServer, {
@@ -43,8 +66,8 @@ const io = new SocketIOServer(httpServer, {
 });
 registerTimerSocket(io);
 
-app.use(express.json({ limit: '200mb' }));
-app.use(express.urlencoded({ extended: true, limit: '200mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.get('/', (req, res) => {
   res.json({
@@ -63,7 +86,9 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
+// Submit limiter must be registered before the student router so it runs first
+app.use('/api/student/attempts', submitLimiter);
 app.use('/api/student', studentRoutes);
 app.use('/api/institute', instituteRoutes);
 app.use('/api/operator', operatorRoutes);
