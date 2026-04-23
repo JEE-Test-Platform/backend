@@ -778,17 +778,17 @@ export const studentService = {
     // Recalculate ALL ranks for this activation atomically via SQL window function.
     // This avoids the race condition where two concurrent submissions both count each
     // other as "not yet submitted" and end up with duplicate ranks.
-    await prisma.$queryRaw`
+    await prisma.$executeRaw`
       UPDATE test_attempts
       SET rank = subq.rn
       FROM (
         SELECT id,
                ROW_NUMBER() OVER (
-                 PARTITION BY test_activation_id
-                 ORDER BY obtained_marks DESC NULLS LAST, time_spent ASC NULLS LAST, submitted_at ASC NULLS LAST
+                 PARTITION BY "testActivationId"
+                 ORDER BY "obtainedMarks" DESC NULLS LAST, "timeSpent" ASC NULLS LAST, "submittedAt" ASC NULLS LAST
                ) AS rn
         FROM test_attempts
-        WHERE test_activation_id = ${attempt.testActivationId}
+        WHERE "testActivationId" = ${attempt.testActivationId}
           AND status = 'SUBMITTED'
       ) subq
       WHERE test_attempts.id = subq.id
@@ -951,17 +951,17 @@ export const studentService = {
     });
 
     // Atomic rank recalculation via SQL window function (same as submitTest)
-    await prisma.$queryRaw`
+    await prisma.$executeRaw`
       UPDATE test_attempts
       SET rank = subq.rn
       FROM (
         SELECT id,
                ROW_NUMBER() OVER (
-                 PARTITION BY test_activation_id
-                 ORDER BY obtained_marks DESC NULLS LAST, time_spent ASC NULLS LAST, submitted_at ASC NULLS LAST
+                 PARTITION BY "testActivationId"
+                 ORDER BY "obtainedMarks" DESC NULLS LAST, "timeSpent" ASC NULLS LAST, "submittedAt" ASC NULLS LAST
                ) AS rn
         FROM test_attempts
-        WHERE test_activation_id = ${attempt.testActivationId}
+        WHERE "testActivationId" = ${attempt.testActivationId}
           AND status = 'SUBMITTED'
       ) subq
       WHERE test_attempts.id = subq.id
