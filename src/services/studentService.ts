@@ -465,15 +465,12 @@ export const studentService = {
                     columnIIItems: true,
                     correctMatches: true,
                     matchRows: true,
-                    correctAnswer: true,
-                    explanation: true,
                     options: {
                       select: {
                         id: true,
                         optionLabel: true,
                         optionText: true,
                         optionImageUrl: true,
-                        isCorrect: true,
                       },
                     },
                   },
@@ -495,20 +492,10 @@ export const studentService = {
       throw new Error('Unauthorized to access this attempt');
     }
 
-    // Hide correct answers and explanations if test is still in progress
-    const questions = attempt.testActivation.masterTest.questions.map(q => ({
-      ...q,
-      correctAnswer: attempt.status === 'SUBMITTED' ? q.correctAnswer : undefined,
-      explanation: attempt.status === 'SUBMITTED' ? q.explanation : undefined,
-      options: attempt.status === 'SUBMITTED'
-        ? q.options
-        : q.options.map(({ isCorrect: _ignored, ...rest }) => rest),
-    }));
-
     return {
       attempt,
       test: attempt.testActivation.masterTest,
-      questions,
+      questions: attempt.testActivation.masterTest.questions,
       answers: attempt.answers,
     };
   },
@@ -1154,7 +1141,7 @@ export const studentService = {
         timeSpent: attempt.timeSpent,
         obtainedMarks: attempt.obtainedMarks,
         totalMarks: attempt.totalMarks,
-        percentage: attempt.percentage,
+        percentage: attempt.percentage ?? (attempt.totalMarks > 0 ? (attempt.obtainedMarks / attempt.totalMarks) * 100 : 0),
         rank: attempt.rank,
         status: attempt.status,
         aiAnalysisReport: attempt.aiAnalysisReport,
