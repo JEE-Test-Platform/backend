@@ -689,19 +689,26 @@ export const studentService = {
       answerUpdates.push({ id: answer.id, isCorrect, marksObtained });
     }
 
-    // Atomically update all answer evaluations in a single transaction
-    await prisma.$transaction(
-      answerUpdates.map(({ id, isCorrect, marksObtained }) =>
-        prisma.studentAnswer.update({
-          where: { id },
-          data: { isCorrect, marksObtained },
-        })
-      )
-    );
+    // Single UPDATE with CASE WHEN — avoids N round-trips for N answers
+    if (answerUpdates.length > 0) {
+      const ids = answerUpdates.map(u => u.id);
+      const isCorrectCase = answerUpdates
+        .map(u => `WHEN id = '${u.id}' THEN ${u.isCorrect}`)
+        .join(' ');
+      const marksCase = answerUpdates
+        .map(u => `WHEN id = '${u.id}' THEN ${u.marksObtained}`)
+        .join(' ');
+      await prisma.$executeRawUnsafe(`
+        UPDATE student_answers
+        SET "isCorrect" = CASE ${isCorrectCase} ELSE "isCorrect" END,
+            "marksObtained" = CASE ${marksCase} ELSE "marksObtained" END
+        WHERE id = ANY($1)
+      `, ids);
+    }
 
     const totalMarks = attempt.testActivation.masterTest.totalMarks;
     const percentage = (obtainedMarks / totalMarks) * 100;
-    const timeSpent = Math.floor((new Date().getTime() - attempt.startedAt.getTime()) / 1000 / 60); // in minutes
+    const timeSpent = Math.floor((new Date().getTime() - attempt.startedAt.getTime()) / 1000 / 60);
 
     // Update attempt
     const submittedAttempt = await prisma.testAttempt.update({
@@ -863,15 +870,22 @@ export const studentService = {
       autoSubmitAnswerUpdates.push({ id: answer.id, isCorrect, marksObtained });
     }
 
-    // Batch update all answer evaluations atomically
-    await prisma.$transaction(
-      autoSubmitAnswerUpdates.map(({ id, isCorrect, marksObtained }) =>
-        prisma.studentAnswer.update({
-          where: { id },
-          data: { isCorrect, marksObtained },
-        })
-      )
-    );
+    // Single UPDATE with CASE WHEN — avoids N round-trips for N answers
+    if (autoSubmitAnswerUpdates.length > 0) {
+      const ids = autoSubmitAnswerUpdates.map(u => u.id);
+      const isCorrectCase = autoSubmitAnswerUpdates
+        .map(u => `WHEN id = '${u.id}' THEN ${u.isCorrect}`)
+        .join(' ');
+      const marksCase = autoSubmitAnswerUpdates
+        .map(u => `WHEN id = '${u.id}' THEN ${u.marksObtained}`)
+        .join(' ');
+      await prisma.$executeRawUnsafe(`
+        UPDATE student_answers
+        SET "isCorrect" = CASE ${isCorrectCase} ELSE "isCorrect" END,
+            "marksObtained" = CASE ${marksCase} ELSE "marksObtained" END
+        WHERE id = ANY($1)
+      `, ids);
+    }
 
     const totalMarks = attempt.testActivation.masterTest.totalMarks;
     const percentage = (obtainedMarks / totalMarks) * 100;
