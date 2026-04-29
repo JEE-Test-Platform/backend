@@ -285,49 +285,16 @@ export const studentService = {
       throw new Error('Student not found');
     }
 
-    // Get test activation — select only fields students need; never send correctAnswer/explanation to client
+    // Only fetch the fields needed to validate and create the attempt — questions are
+    // loaded separately by the client via GET /attempts/:id so we don't block navigation
     const activation = await prisma.instituteTestActivation.findUnique({
       where: { id: testActivationId },
       include: {
         masterTest: {
           select: {
             id: true,
-            title: true,
-            testType: true,
             duration: true,
             totalMarks: true,
-            passingMarks: true,
-            instructions: true,
-            questions: {
-              select: {
-                id: true,
-                questionText: true,
-                questionType: true,
-                questionOrder: true,
-                subject: true,
-                difficulty: true,
-                nature: true,
-                marks: true,
-                negativeMarks: true,
-                partialMarking: true,
-                imageUrl: true,
-                passageText: true,
-                parentQuestionId: true,
-                columnIItems: true,
-                columnIIItems: true,
-                correctMatches: true,
-                matchRows: true,
-                options: {
-                  select: {
-                    id: true,
-                    optionLabel: true,
-                    optionText: true,
-                    optionImageUrl: true,
-                  },
-                },
-              },
-              orderBy: { questionOrder: 'asc' },
-            },
           },
         },
       },
@@ -371,11 +338,6 @@ export const studentService = {
     });
 
     if (existingAttempt) {
-      // Reuse questions already loaded in the activation query — no second DB round-trip
-      const answers = await prisma.studentAnswer.findMany({
-        where: { attemptId: existingAttempt.id },
-      });
-
       // Re-schedule expiry job if not already queued (idempotent via jobId)
       const durationMs = activation.masterTest.duration * 60 * 1000;
       const elapsedMs = Date.now() - existingAttempt.startedAt.getTime();
@@ -386,12 +348,8 @@ export const studentService = {
         { delay, jobId: `auto-submit-${existingAttempt.id}` }
       ).catch(err => console.error('[Queue] Failed to schedule expiry job:', err));
 
-      return {
-        attempt: existingAttempt,
-        test: activation.masterTest,
-        questions: activation.masterTest.questions, // correctAnswer/explanation not selected at DB level
-        answers,
-      };
+      // Return only the attempt ID — client fetches questions via GET /attempts/:id
+      return { attempt: existingAttempt };
     }
 
     // Create new attempt
@@ -413,13 +371,8 @@ export const studentService = {
       { delay: durationMs, jobId: `auto-submit-${attempt.id}` }
     ).catch(err => console.error('[Queue] Failed to schedule expiry job:', err));
 
-    // correctAnswer and explanation are not selected at DB level so are never sent to clients
-    return {
-      attempt,
-      test: activation.masterTest,
-      questions: activation.masterTest.questions,
-      answers: [],
-    };
+    // Return only the attempt ID — client fetches questions via GET /attempts/:id
+    return { attempt };
   },
 
   // Get current test attempt
