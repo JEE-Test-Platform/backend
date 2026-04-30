@@ -691,19 +691,19 @@ export const studentService = {
 
     // Single UPDATE with CASE WHEN — avoids N round-trips for N answers
     if (answerUpdates.length > 0) {
-      const ids = answerUpdates.map(u => u.id);
       const isCorrectCase = answerUpdates
         .map(u => `WHEN id = '${u.id}' THEN ${u.isCorrect}`)
         .join(' ');
       const marksCase = answerUpdates
         .map(u => `WHEN id = '${u.id}' THEN ${u.marksObtained}`)
         .join(' ');
+      const idList = answerUpdates.map(u => `'${u.id}'`).join(', ');
       await prisma.$executeRawUnsafe(`
         UPDATE student_answers
         SET "isCorrect" = CASE ${isCorrectCase} ELSE "isCorrect" END,
             "marksObtained" = CASE ${marksCase} ELSE "marksObtained" END
-        WHERE id = ANY($1)
-      `, ids);
+        WHERE id IN (${idList})
+      `);
     }
 
     const totalMarks = attempt.testActivation.masterTest.totalMarks;
@@ -872,19 +872,19 @@ export const studentService = {
 
     // Single UPDATE with CASE WHEN — avoids N round-trips for N answers
     if (autoSubmitAnswerUpdates.length > 0) {
-      const ids = autoSubmitAnswerUpdates.map(u => u.id);
       const isCorrectCase = autoSubmitAnswerUpdates
         .map(u => `WHEN id = '${u.id}' THEN ${u.isCorrect}`)
         .join(' ');
       const marksCase = autoSubmitAnswerUpdates
         .map(u => `WHEN id = '${u.id}' THEN ${u.marksObtained}`)
         .join(' ');
+      const idList = autoSubmitAnswerUpdates.map(u => `'${u.id}'`).join(', ');
       await prisma.$executeRawUnsafe(`
         UPDATE student_answers
         SET "isCorrect" = CASE ${isCorrectCase} ELSE "isCorrect" END,
             "marksObtained" = CASE ${marksCase} ELSE "marksObtained" END
-        WHERE id = ANY($1)
-      `, ids);
+        WHERE id IN (${idList})
+      `);
     }
 
     const totalMarks = attempt.testActivation.masterTest.totalMarks;
