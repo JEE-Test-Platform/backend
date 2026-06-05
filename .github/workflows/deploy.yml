@@ -15,12 +15,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Log in to Azure Container Registry
-        uses: azure/docker-login@v2
+      - name: Azure Login
+        uses: azure/login@v2
         with:
-          login-server: ${{ secrets.ACR_NAME }}.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to Azure Container Registry
+        run: az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: Build and push Docker image
         run: |
@@ -28,11 +29,6 @@ jobs:
                        -t ${{ secrets.ACR_NAME }}.azurecr.io/jeetest-backend:latest .
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/jeetest-backend:${{ github.sha }}
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/jeetest-backend:latest
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy to Azure Container App
         run: |
