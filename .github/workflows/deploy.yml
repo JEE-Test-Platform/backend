@@ -20,7 +20,7 @@ jobs:
         with:
           login-server: ${{ secrets.ACR_NAME }}.azurecr.io
           username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.AR_PASSWORD }}
+          password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Buuild and push Docker image
         run: |
