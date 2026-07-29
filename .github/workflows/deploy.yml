@@ -22,7 +22,7 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.AR_PASSWORD }}
 
-      - name: Buuild and push Docker image
+      - name: Buld and push Docker image
         run: |
           docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/jeetest-backend:${{ github.sha }} \
                        -t ${{ secrets.ACR_NAME }}.azurecr.io/jeetest-backend:latest .
