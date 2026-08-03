@@ -1,5 +1,4 @@
-name: kdda
-
+name: kd
 on:
   push:
     branches: [ "main" ]
