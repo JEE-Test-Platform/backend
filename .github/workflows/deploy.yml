@@ -1,4 +1,4 @@
-name: kddQWHEBSD\
+name: kddQWHD\
 on:
   push:
     branches: [ "main" ]
