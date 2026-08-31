@@ -1,4 +1,4 @@
-name: kdegrd
+name: kdegrdscdv
 on:
   push:
     branches: [ "main" ]
