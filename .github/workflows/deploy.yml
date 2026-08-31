@@ -1,4 +1,4 @@
-name: kd
+name: kdegrd
 on:
   push:
     branches: [ "main" ]
