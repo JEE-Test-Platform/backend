@@ -1,4 +1,4 @@
-name: kdsegrdg
+name: kdseg
 on:
   push:
     branches: [ "main" ]
